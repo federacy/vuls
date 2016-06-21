@@ -166,8 +166,10 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	var err error
 	// Setup Logger
 	var logger *logrus.Entry = log[0]
-	//need to reformat commands here
 
+	// This is probably not 100% correct, but it works.  I don't know
+	// the details of what is going on to be able to assess how
+	// good//bad this is
 	toExec := ex.Command("bash", "-c", cmd)
 	var stdoutBuf, stderrBuf bytes.Buffer
 	toExec.Stderr = &stderrBuf
@@ -180,117 +182,12 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	}
 	result.Stderr = stderrBuf.String()
 	result.Stdout = stdoutBuf.String()
-	/*
 
-		bashCommands := parseBashString(cmd)
-		var output string
-		for _, command := range bashCommands {
-			output, err = executeBashCommand(command)
-			logger.Debugf("Intermediate output for %v\n %s\terror: %#v", command, output, err)
-			if err != nil {
-				result.ExitStatus = 999
-				result.Stderr = err.Error()
-				logger.Infof("Error is: %s", err.Error())
-				return
-			}
-		}
-		// There hasn't been an error, so we must be fine
-		result.ExitStatus = 0
-		result.Stdout = output
-		if err != nil {
-			result.Stderr = err.Error()
-		}
-	*/
 	logger.Debugf(
 		"Shell executed. cmd: %s, status: %#v\nstdout: \n%s\nstderr: \n%s",
 		maskPassword(cmd, c.Password), err, result.Stdout, result.Stderr)
 
 	return
-}
-
-func executeBashCommand(command bashCommand) (output string, err error) {
-	commands, err := bashExecuterHelper(command)
-	if err != nil {
-		return "", err
-	}
-	var stdoutBuf, stderrBuf bytes.Buffer
-	commands[len(commands)-1].Stdout = &stdoutBuf
-	commands[len(commands)-1].Stderr = &stderrBuf
-	for _, cmd := range commands {
-		if err = cmd.Start(); err != nil {
-			return "", err
-		}
-	}
-	for _, cmd := range commands {
-		if err = cmd.Wait(); err != nil {
-			return "", err
-		}
-	}
-	return stdoutBuf.String(), nil
-}
-
-func bashExecuterHelper(command bashCommand) (commands []*ex.Cmd, err error) {
-	toExec := ex.Command(command.Executable, command.Args...)
-	commands = []*ex.Cmd{toExec}
-	if command.Pipe != nil {
-		pipes, err := bashExecuterHelper((*command.Pipe))
-		if err != nil {
-			return commands, err
-		}
-		// chain the pipes together as we build it up
-		pipes[0].Stdin, err = commands[0].StdoutPipe()
-		if err != nil {
-			return commands, err
-		}
-		commands = append(commands, pipes...)
-	}
-	return
-}
-
-type bashCommand struct {
-	Executable string
-	Args       []string
-	Pipe       *bashCommand
-}
-
-// Since golang doesn't do execution of commands the same way as
-// the SSH stuff, we need to take the string we've built up to execute via
-// SSH, turn it into a nice struct thing, and then execute on that.
-func parseBashString(cmd string) (commands []bashCommand) {
-	// Remove trailing//leading whitespace
-	cmd = strings.TrimSpace(cmd)
-	// Separate out all individual commands
-	stringCommands := strings.Split(cmd, ";")
-	commands = make([]bashCommand, len(stringCommands))
-	// For each separate command
-	for i, command := range stringCommands {
-
-		// parse the command -- At this point it might have a pipe in it
-		commands[i] = parsePipeCommand(command)
-	}
-	return
-}
-
-// Turn a string that is "<cmd>( <buncha args> )(| <cmd>( <buncha args>))+"" into
-// a struct that is {cmd, []args, []pipedCommands} which is the way the golang exec
-// pkg needs things to be formatted in order to work.
-func parsePipeCommand(cmd string) (command bashCommand) {
-	cmd = strings.TrimSpace(cmd)
-	piped := strings.SplitN(cmd, "|", 2)
-	// Turn the 1st substring (just cmd + args) into a 2-tuple
-	command.Executable, command.Args = parseCommand(piped[0])
-	if len(piped) == 2 {
-		// If the 2nd string exists, it might still hvae another pipe in it so
-		// figure that out
-		pipeCommand := parsePipeCommand(piped[1])
-		command.Pipe = &pipeCommand
-	}
-	return
-}
-
-func parseCommand(cmd string) (string, []string) {
-	parts := strings.Fields(cmd)
-	return parts[0], parts[1:len(parts)]
 }
 
 // SSHExec should never be called directly

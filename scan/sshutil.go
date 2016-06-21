@@ -166,7 +166,6 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	var err error
 	// Setup Logger
 	var logger *logrus.Entry = log[0]
-	logger.Info("LOCAL EXECING")
 	//need to reformat commands here
 
 	toExec := ex.Command("bash", "-c", cmd)

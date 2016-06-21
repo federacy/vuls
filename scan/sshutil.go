@@ -176,6 +176,7 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 		if err != nil {
 			result.ExitStatus = 999
 			result.Stderr = err.Error()
+			logger.Infof("Error is: %s", err.Error())
 			return
 		}
 	}

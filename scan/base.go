@@ -49,6 +49,7 @@ func (l *base) exec(cmd string, sudo bool) sshResult {
 func (l *base) ssh(cmd string, sudo bool) sshResult {
 	return sshExec(l.ServerInfo, cmd, sudo, l.log)
 }
+
 // DEPRECATED --------------------
 
 func (l *base) setServerInfo(c config.ServerInfo) {
@@ -120,7 +121,7 @@ func (l *base) exitedContainers() (containers []config.Container, err error) {
 
 func (l *base) dockerPs(option string) (string, error) {
 	cmd := fmt.Sprintf("docker ps %s", option)
-	r := l.ssh(cmd, noSudo)
+	r := l.exec(cmd, noSudo)
 	if !r.isSuccess() {
 		return "", fmt.Errorf(
 			"Failed to %s. status: %d, stdout: %s, stderr: %s",
@@ -168,9 +169,9 @@ func (l *base) detectPlatform() error {
 }
 
 func (l base) detectRunningOnAws() (ok bool, instanceID string, err error) {
-	if r := l.ssh("type curl", noSudo); r.isSuccess() {
+	if r := l.exec("type curl", noSudo); r.isSuccess() {
 		cmd := "curl --max-time 1 --retry 3 --noproxy 169.254.169.254 http://169.254.169.254/latest/meta-data/instance-id"
-		if r := l.ssh(cmd, noSudo); r.isSuccess() {
+		if r := l.exec(cmd, noSudo); r.isSuccess() {
 			id := strings.TrimSpace(r.Stdout)
 			return true, id, nil
 		} else if r.ExitStatus == 28 || r.ExitStatus == 7 {
@@ -181,9 +182,9 @@ func (l base) detectRunningOnAws() (ok bool, instanceID string, err error) {
 		}
 	}
 
-	if r := l.ssh("type wget", noSudo); r.isSuccess() {
+	if r := l.exec("type wget", noSudo); r.isSuccess() {
 		cmd := "wget --tries=3 --timeout=1 --no-proxy -q -O - http://169.254.169.254/latest/meta-data/instance-id"
-		if r := l.ssh(cmd, noSudo); r.isSuccess() {
+		if r := l.exec(cmd, noSudo); r.isSuccess() {
 			id := strings.TrimSpace(r.Stdout)
 			return true, id, nil
 		} else if r.ExitStatus == 4 {

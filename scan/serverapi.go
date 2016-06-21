@@ -168,7 +168,6 @@ func InitServers(localLogger *logrus.Entry) error {
 }
 
 func detectServerOSes() (oses []osTypeInterface, err error) {
-	Log.Info("Detecting serer os's...")
 	osTypeChan := make(chan osTypeInterface, len(config.Conf.Servers))
 	defer close(osTypeChan)
 	for _, s := range config.Conf.Servers {
@@ -179,9 +178,7 @@ func detectServerOSes() (oses []osTypeInterface, err error) {
 	}
 
 	timeout := time.After(300 * time.Second)
-	Log.Info("Going over server configs")
 	for i := 0; i < len(config.Conf.Servers); i++ {
-		Log.Info("Doing a thing...")
 		select {
 		case res := <-osTypeChan:
 			if 0 < len(res.getErrs()) {
@@ -210,7 +207,6 @@ func detectServerOSes() (oses []osTypeInterface, err error) {
 			return oses, fmt.Errorf(msg)
 		}
 	}
-	Log.Info("In the middle?")
 	errorOccurred := false
 	for _, osi := range oses {
 		if errs := osi.getErrs(); 0 < len(errs) {

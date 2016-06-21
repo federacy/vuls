@@ -285,6 +285,7 @@ func detectContainerOSes() (oses []osTypeInterface, err error) {
 }
 
 func detectContainerOSesOnServer(containerHost osTypeInterface) (oses []osTypeInterface) {
+	Log.Info("DETECTING OSES ON SERVER")
 	containerHostInfo := containerHost.getServerInfo()
 	if len(containerHostInfo.Containers) == 0 {
 		return

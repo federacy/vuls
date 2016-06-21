@@ -181,6 +181,7 @@ func detectServerOSes() (oses []osTypeInterface, err error) {
 	timeout := time.After(300 * time.Second)
 	Log.Info("Going over server configs")
 	for i := 0; i < len(config.Conf.Servers); i++ {
+		Log.Info("Doing a thing...")
 		select {
 		case res := <-osTypeChan:
 			if 0 < len(res.getErrs()) {

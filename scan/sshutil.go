@@ -168,6 +168,21 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	var logger *logrus.Entry = log[0]
 	logger.Info("LOCAL EXECING")
 	//need to reformat commands here
+
+	toExec := ex.Command("bash", "-c", cmd)
+	var stdoutBuf, stderrBuf bytes.Buffer
+	toExec.Stderr = &stderrBuf
+	toExec.Stdout = &stdoutBuf
+
+	if err := toExec.Run(), err != nil {
+		result.ExitStatus = 999
+	} else {
+		result.ExitStatus = 0
+	}
+	result.Stderr = stderrBuf.String()
+	result.Stdout = stdoutBuf.String()
+	/*
+
 	bashCommands := parseBashString(cmd)
 	var output string
 	for _, command := range bashCommands {
@@ -186,6 +201,7 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	if err != nil {
 		result.Stderr = err.Error()
 	}
+	*/
 	logger.Debugf(
 		"Shell executed. cmd: %s, status: %#v\nstdout: \n%s\nstderr: \n%s",
 		maskPassword(cmd, c.Password), err, result.Stdout, result.Stderr)

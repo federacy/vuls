@@ -174,7 +174,7 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	toExec.Stderr = &stderrBuf
 	toExec.Stdout = &stdoutBuf
 
-	if err := toExec.Run(), err != nil {
+	if err := toExec.Run(); err != nil {
 		result.ExitStatus = 999
 	} else {
 		result.ExitStatus = 0
@@ -183,24 +183,24 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	result.Stdout = stdoutBuf.String()
 	/*
 
-	bashCommands := parseBashString(cmd)
-	var output string
-	for _, command := range bashCommands {
-		output, err = executeBashCommand(command)
-		logger.Debugf("Intermediate output for %v\n %s\terror: %#v", command, output, err)
-		if err != nil {
-			result.ExitStatus = 999
-			result.Stderr = err.Error()
-			logger.Infof("Error is: %s", err.Error())
-			return
+		bashCommands := parseBashString(cmd)
+		var output string
+		for _, command := range bashCommands {
+			output, err = executeBashCommand(command)
+			logger.Debugf("Intermediate output for %v\n %s\terror: %#v", command, output, err)
+			if err != nil {
+				result.ExitStatus = 999
+				result.Stderr = err.Error()
+				logger.Infof("Error is: %s", err.Error())
+				return
+			}
 		}
-	}
-	// There hasn't been an error, so we must be fine
-	result.ExitStatus = 0
-	result.Stdout = output
-	if err != nil {
-		result.Stderr = err.Error()
-	}
+		// There hasn't been an error, so we must be fine
+		result.ExitStatus = 0
+		result.Stdout = output
+		if err != nil {
+			result.Stderr = err.Error()
+		}
 	*/
 	logger.Debugf(
 		"Shell executed. cmd: %s, status: %#v\nstdout: \n%s\nstderr: \n%s",

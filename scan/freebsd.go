@@ -35,6 +35,7 @@ func detectFreebsd(c config.ServerInfo) (itsMe bool, bsd osTypeInterface) {
 			}
 		}
 	}
+	Log.Debugf("Not FreeBSD. servernam: %s", c.ServerName)
 	return false, bsd
 }
 
@@ -68,18 +69,23 @@ func (o *bsd) scanInstalledPackages() ([]models.PackageInfo, error) {
 	cmd := util.PrependProxyEnv("pkg version -v")
 	r := o.exec(cmd, noSudo)
 	if !r.isSuccess() {
-		return nil, fmt.Errorf("Failed to %s. status: %d, stdout:%s, Stderr: %s",
-			cmd, r.ExitStatus, r.Stdout, r.Stderr)
+		return nil, fmt.Errorf("Failed to SSH: %s", r)
 	}
 	return o.parsePkgVersion(r.Stdout), nil
 }
 
 func (o *bsd) scanUnsecurePackages() (cvePacksList []CvePacksInfo, err error) {
-	cmd := util.PrependProxyEnv("pkg audit -F -f /tmp/vuln.db -r")
+	const vulndbPath = "/tmp/vuln.db"
+	cmd := "rm -f " + vulndbPath
+	r := o.ssh(cmd, noSudo)
+	if !r.isSuccess(0) {
+		return nil, fmt.Errorf("Failed to SSH: %s", r)
+	}
+
+	cmd = util.PrependProxyEnv("pkg audit -F -r -f " + vulndbPath)
 	r := o.exec(cmd, noSudo)
 	if !r.isSuccess(0, 1) {
-		return nil, fmt.Errorf("Failed to %s. status: %d, stdout:%s, Stderr: %s",
-			cmd, r.ExitStatus, r.Stdout, r.Stderr)
+		return nil, fmt.Errorf("Failed to SSH: %s", r)
 	}
 	if r.ExitStatus == 0 {
 		// no vulnerabilities

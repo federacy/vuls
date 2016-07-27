@@ -61,9 +61,14 @@ func (c TOMLLoader) Load(pathToToml, keyPass, sudoPass string) (err error) {
 		}
 
 		s := ServerInfo{ServerName: name}
-		s.User = v.User
-		if s.User == "" {
+
+		switch {
+		case v.User != "":
+			s.User = v.User
+		case d.User != "":
 			s.User = d.User
+		default:
+			return fmt.Errorf("%s is invalid. User is empty", name)
 		}
 
 		//  s.Password = sudoPass
@@ -73,10 +78,17 @@ func (c TOMLLoader) Load(pathToToml, keyPass, sudoPass string) (err error) {
 		}
 
 		s.Host = v.Host
+		if s.Host == "" {
+			return fmt.Errorf("%s is invalid. host is empty", name)
+		}
 
-		s.Port = v.Port
-		if s.Port == "" {
+		switch {
+		case v.Port != "":
+			s.Port = v.Port
+		case d.Port != "":
 			s.Port = d.Port
+		default:
+			s.Port = "22"
 		}
 
 		s.KeyPath = v.KeyPath
@@ -86,7 +98,7 @@ func (c TOMLLoader) Load(pathToToml, keyPass, sudoPass string) (err error) {
 		if s.KeyPath != "" {
 			if _, err := os.Stat(s.KeyPath); err != nil {
 				return fmt.Errorf(
-					"config.toml is invalid. keypath: %s not exists", s.KeyPath)
+					"%s is invalid. keypath: %s not exists", name, s.KeyPath)
 			}
 		}
 
@@ -104,6 +116,20 @@ func (c TOMLLoader) Load(pathToToml, keyPass, sudoPass string) (err error) {
 		s.Containers = v.Containers
 		if len(s.Containers) == 0 {
 			s.Containers = d.Containers
+		}
+
+		s.Optional = v.Optional
+		for _, dkv := range d.Optional {
+			found := false
+			for _, kv := range s.Optional {
+				if dkv[0] == kv[0] {
+					found = true
+					break
+				}
+			}
+			if !found {
+				s.Optional = append(s.Optional, dkv)
+			}
 		}
 
 		s.LogMsgAnsiColor = Colors[i%len(Colors)]

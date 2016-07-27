@@ -123,9 +123,7 @@ func (l *base) dockerPs(option string) (string, error) {
 	cmd := fmt.Sprintf("docker ps %s", option)
 	r := l.exec(cmd, noSudo)
 	if !r.isSuccess() {
-		return "", fmt.Errorf(
-			"Failed to %s. status: %d, stdout: %s, stderr: %s",
-			cmd, r.ExitStatus, r.Stdout, r.Stderr)
+		return "", fmt.Errorf("Failed to SSH: %s", r)
 	}
 	return r.Stdout, nil
 }
@@ -171,10 +169,19 @@ func (l *base) detectPlatform() error {
 func (l base) detectRunningOnAws() (ok bool, instanceID string, err error) {
 	if r := l.exec("type curl", noSudo); r.isSuccess() {
 		cmd := "curl --max-time 1 --retry 3 --noproxy 169.254.169.254 http://169.254.169.254/latest/meta-data/instance-id"
-		if r := l.exec(cmd, noSudo); r.isSuccess() {
+		r := l.exec(cmd, noSudo)
+		if r.isSuccess() {
 			id := strings.TrimSpace(r.Stdout)
+
+			if id == "not found" {
+				// status: 0, stdout: "not found" on degitalocean or Azure
+				return false, "", nil
+			}
 			return true, id, nil
-		} else if r.ExitStatus == 28 || r.ExitStatus == 7 {
+		}
+
+		switch r.ExitStatus {
+		case 28, 7:
 			// Not running on AWS
 			//  7   Failed to connect to host.
 			// 28  operation timeout.
@@ -184,12 +191,17 @@ func (l base) detectRunningOnAws() (ok bool, instanceID string, err error) {
 
 	if r := l.exec("type wget", noSudo); r.isSuccess() {
 		cmd := "wget --tries=3 --timeout=1 --no-proxy -q -O - http://169.254.169.254/latest/meta-data/instance-id"
-		if r := l.exec(cmd, noSudo); r.isSuccess() {
+		r := l.exec(cmd, noSudo)
+		if r.isSuccess() {
 			id := strings.TrimSpace(r.Stdout)
 			return true, id, nil
-		} else if r.ExitStatus == 4 {
+		}
+
+		switch r.ExitStatus {
+		case 4, 8:
 			// Not running on AWS
 			// 4   Network failure
+			// 8   Server issued an error response.
 			return false, "", nil
 		}
 	}
@@ -241,6 +253,7 @@ func (l *base) convertToModel() (models.ScanResult, error) {
 		Platform:    l.Platform,
 		KnownCves:   scoredCves,
 		UnknownCves: unscoredCves,
+		Optional:    l.ServerInfo.Optional,
 	}, nil
 }
 

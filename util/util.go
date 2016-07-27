@@ -36,6 +36,12 @@ func GenWorkers(num int) chan<- func() {
 	for i := 0; i < num; i++ {
 		// Start goroutine to exec the functions that get pushed onto the func chan
 		go func() {
+			defer func() {
+				if p := recover(); p != nil {
+					log := NewCustomLogger(config.ServerInfo{})
+					log.Debugf("Panic: %s")
+				}
+			}()
 			for f := range tasks {
 				f()
 			}

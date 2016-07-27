@@ -20,8 +20,10 @@ package commands
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Sirupsen/logrus"
 	c "github.com/future-architect/vuls/config"
@@ -49,24 +51,30 @@ type ScanCmd struct {
 	cvssScoreOver      float64
 	ignoreUnscoredCves bool
 
-	httpProxy string
-
-	// reporting
-	reportSlack bool
-	reportMail  bool
-	reportJSON  bool
-	reportText  bool
-	reportS3    bool
-
+	httpProxy       string
 	askSudoPassword bool
 	askKeyPassword  bool
 
-	useYumPluginSecurity  bool
-	useUnattendedUpgrades bool
+	// reporting
+	reportSlack     bool
+	reportMail      bool
+	reportJSON      bool
+	reportText      bool
+	reportS3        bool
+	reportAzureBlob bool
 
 	awsProfile  string
 	awsS3Bucket string
 	awsRegion   string
+
+	azureAccount   string
+	azureKey       string
+	azureContainer string
+
+	useYumPluginSecurity  bool
+	useUnattendedUpgrades bool
+
+	sshExternal bool
 }
 
 // Name return subcommand name
@@ -86,6 +94,8 @@ func (*ScanCmd) Usage() string {
 		[-cve-dictionary-url=http://127.0.0.1:1323]
 		[-cvss-over=7]
 		[-ignore-unscored-cves]
+		[-ssh-external]
+		[-report-azure-blob]
 		[-report-json]
 		[-report-mail]
 		[-report-s3]
@@ -99,6 +109,11 @@ func (*ScanCmd) Usage() string {
 		[-aws-profile=default]
 		[-aws-region=us-west-2]
 		[-aws-s3-bucket=bucket_name]
+		[-azure-account=accout]
+		[-azure-key=key]
+		[-azure-container=container]
+
+		[SERVER]...
 `
 }
 
@@ -144,6 +159,12 @@ func (p *ScanCmd) SetFlags(f *flag.FlagSet) {
 		false,
 		"Don't report the unscored CVEs")
 
+	f.BoolVar(
+		&p.sshExternal,
+		"ssh-external",
+		false,
+		"Use external ssh command. Default: Use the Go native implementation")
+
 	f.StringVar(
 		&p.httpProxy,
 		"http-proxy",
@@ -167,11 +188,20 @@ func (p *ScanCmd) SetFlags(f *flag.FlagSet) {
 	f.BoolVar(&p.reportS3,
 		"report-s3",
 		false,
-		"Write report to S3 (bucket/yyyyMMdd_HHmm)",
+		"Write report to S3 (bucket/yyyyMMdd_HHmm/servername.json)",
 	)
-	f.StringVar(&p.awsProfile, "aws-profile", "default", "AWS Profile to use")
-	f.StringVar(&p.awsRegion, "aws-region", "us-east-1", "AWS Region to use")
+	f.StringVar(&p.awsProfile, "aws-profile", "default", "AWS profile to use")
+	f.StringVar(&p.awsRegion, "aws-region", "us-east-1", "AWS region to use")
 	f.StringVar(&p.awsS3Bucket, "aws-s3-bucket", "", "S3 bucket name")
+
+	f.BoolVar(&p.reportAzureBlob,
+		"report-azure-blob",
+		false,
+		"Write report to S3 (container/yyyyMMdd_HHmm/servername.json)",
+	)
+	f.StringVar(&p.azureAccount, "azure-account", "", "Azure account name to use. AZURE_STORAGE_ACCOUNT environment variable is used if not specified")
+	f.StringVar(&p.azureKey, "azure-key", "", "Azure account key to use. AZURE_STORAGE_ACCESS_KEY environment variable is used if not specified")
+	f.StringVar(&p.azureContainer, "azure-container", "", "Azure storage container name")
 
 	f.BoolVar(
 		&p.askKeyPassword,
@@ -238,8 +268,27 @@ func (p *ScanCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 	} else {
 		logrus.Infof("cve-dictionary: %s", p.cveDictionaryURL)
 	}
+
+	var servernames []string
+	if 0 < len(f.Args()) {
+		servernames = f.Args()
+	} else {
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) == 0 {
+			bytes, err := ioutil.ReadAll(os.Stdin)
+			if err != nil {
+				logrus.Errorf("Failed to read stdin: %s", err)
+				return subcommands.ExitFailure
+			}
+			fields := strings.Fields(string(bytes))
+			if 0 < len(fields) {
+				servernames = fields
+			}
+		}
+	}
+
 	target := make(map[string]c.ServerInfo)
-	for _, arg := range f.Args() {
+	for _, arg := range servernames {
 		found := false
 		for servername, info := range c.Conf.Servers {
 			if servername == arg {
@@ -253,7 +302,7 @@ func (p *ScanCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 			return subcommands.ExitUsageError
 		}
 	}
-	if 0 < len(f.Args()) {
+	if 0 < len(servernames) {
 		c.Conf.Servers = target
 	}
 
@@ -292,12 +341,36 @@ func (p *ScanCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 		}
 		reports = append(reports, report.S3Writer{})
 	}
+	if p.reportAzureBlob {
+		c.Conf.AzureAccount = p.azureAccount
+		if c.Conf.AzureAccount == "" {
+			c.Conf.AzureAccount = os.Getenv("AZURE_STORAGE_ACCOUNT")
+		}
+
+		c.Conf.AzureKey = p.azureKey
+		if c.Conf.AzureKey == "" {
+			c.Conf.AzureKey = os.Getenv("AZURE_STORAGE_ACCESS_KEY")
+		}
+
+		c.Conf.AzureContainer = p.azureContainer
+		if c.Conf.AzureContainer == "" {
+			Log.Error("Azure storage container name is requied with --azure-container option")
+			return subcommands.ExitUsageError
+		}
+		if err := report.CheckIfAzureContainerExists(); err != nil {
+			Log.Errorf("Failed to access to the Azure Blob container. err: %s", err)
+			Log.Error("Ensure the container or check Azure config before scanning")
+			return subcommands.ExitUsageError
+		}
+		reports = append(reports, report.AzureBlobWriter{})
+	}
 
 	c.Conf.DBPath = p.dbpath
 	c.Conf.CveDBPath = p.cvedbpath
 	c.Conf.CveDictionaryURL = p.cveDictionaryURL
 	c.Conf.CvssScoreOver = p.cvssScoreOver
 	c.Conf.IgnoreUnscoredCves = p.ignoreUnscoredCves
+	c.Conf.SSHExternal = p.sshExternal
 	c.Conf.HTTPProxy = p.httpProxy
 	c.Conf.UseYumPluginSecurity = p.useYumPluginSecurity
 	c.Conf.UseUnattendedUpgrades = p.useUnattendedUpgrades
@@ -313,17 +386,14 @@ func (p *ScanCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 		return subcommands.ExitFailure
 	}
 
-	Log.Info("Detecting Server OS... ")
-	
-	// Remote ping out to all the servers to detect OS's
-	err = scan.InitServers(Log)
-	if err != nil {
-		Log.Errorf("Failed to init servers. Check the configuration. err: %s", err)
-		return subcommands.ExitFailure
-	}
+	Log.Info("Detecting Server/Contianer OS... ")
+	scan.InitServers(Log)
+
+	Log.Info("Detecting Platforms... ")
+	scan.DetectPlatforms(Log)
 
 	Log.Info("Scanning vulnerabilities... ")
-	
+
 	// Actually do the scan
 	if errs := scan.Scan(); 0 < len(errs) {
 		for _, e := range errs {

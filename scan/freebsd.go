@@ -77,13 +77,13 @@ func (o *bsd) scanInstalledPackages() ([]models.PackageInfo, error) {
 func (o *bsd) scanUnsecurePackages() (cvePacksList []CvePacksInfo, err error) {
 	const vulndbPath = "/tmp/vuln.db"
 	cmd := "rm -f " + vulndbPath
-	r := o.ssh(cmd, noSudo)
+	r := o.exec(cmd, noSudo)
 	if !r.isSuccess(0) {
 		return nil, fmt.Errorf("Failed to SSH: %s", r)
 	}
 
 	cmd = util.PrependProxyEnv("pkg audit -F -r -f " + vulndbPath)
-	r := o.exec(cmd, noSudo)
+	r = o.exec(cmd, noSudo)
 	if !r.isSuccess(0, 1) {
 		return nil, fmt.Errorf("Failed to SSH: %s", r)
 	}

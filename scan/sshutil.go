@@ -156,13 +156,13 @@ func exec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (resul
 		default:
 			logger.Panicf("sudoOpt is invalid. SudoOpt: %v", c.SudoOpt)
 		}
-	if runtime.GOOS == "windows" || !conf.Conf.SSHExternal {
-		result = sshExecNative(c, cmd, sudo)
-	} else {
-		result = sshExecExternal(c, cmd, sudo)
+		if runtime.GOOS == "windows" || !conf.Conf.SSHExternal {
+			result = sshExecNative(c, cmd, sudo)
+		} else {
+			result = sshExecExternal(c, cmd, sudo)
+		}
 	}
-
-	logger := getSSHLogger(log...)
+	logger = getSSHLogger(log...)
 	logger.Debug(result)
 	return
 }

@@ -133,7 +133,7 @@ func parallelSSHExec(fn func(osTypeInterface) error, timeoutSec ...int) (errs []
 func exec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
 	l.Println("EXECING\n\n")
 	l.Printf("Host: %s\tPort:%s\t", c.Host, c.Port)
-	if (c.Port == "" || c.Port == "local") &&
+	if c.Port == "nossh" &&
 		(c.Host == "127.0.0.1" || c.Host == "localhost") {
 		result = localExec(c, cmd, sudo, log...)
 	} else {

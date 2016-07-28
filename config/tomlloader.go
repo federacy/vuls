@@ -83,7 +83,7 @@ func (c TOMLLoader) Load(pathToToml, keyPass, sudoPass string) (err error) {
 		}
 
 		switch {
-		case v.Port != "":
+		case v.Port != nil:
 			s.Port = v.Port
 		case d.Port != "":
 			s.Port = d.Port

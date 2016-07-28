@@ -23,6 +23,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	l "log"
 	"net"
 	"os"
 	ex "os/exec"
@@ -130,6 +131,7 @@ func parallelSSHExec(fn func(osTypeInterface) error, timeoutSec ...int) (errs []
 // there is no port//the port is "local", then dont go over SSH
 
 func exec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
+	l.Println("EXECING\n\n")
 	if (c.Port == "" || c.Port == "local") &&
 		(c.Host == "127.0.0.1" || c.Host == "localhost") {
 		result = localExec(c, cmd, sudo, log...)
@@ -142,7 +144,7 @@ func exec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (resul
 }
 
 func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
-
+	l.Println("LOCAL EXECING!!!!!")
 	// This is probably not 100% correct, but it works.  I don't know
 	// the details of what is going on to be able to assess how
 	// good//bad this is
@@ -156,6 +158,7 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	} else {
 		result.ExitStatus = 0
 	}
+	l.Printf("Command run is: %s \n", cmd)
 	result.Stderr = stderrBuf.String()
 	result.Stdout = stdoutBuf.String()
 

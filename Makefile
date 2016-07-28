@@ -33,7 +33,7 @@ fmt:
 fmtcheck:
 	$(foreach file,$(SRCS),gofmt -d $(file);)
 
-pretest: lint vet fmtcheck
+pretest: vet fmtcheck
 
 test: pretest
 	$(foreach pkg,$(PKGS),go test -v $(pkg) || exit;)

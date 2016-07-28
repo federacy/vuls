@@ -128,62 +128,20 @@ func parallelSSHExec(fn func(osTypeInterface) error, timeoutSec ...int) (errs []
 // Instead of just doing SSHExec everything, just do an exec
 // if the ServerInfo says that this is a localhost//127.0.0.1 AND
 // there is no port//the port is "local", then dont go over SSH
+
 func exec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
-	// Setup Logger
-	var logger *logrus.Entry
-	if len(log) == 0 {
-		level := logrus.InfoLevel
-		if conf.Conf.Debug == true {
-			level = logrus.DebugLevel
-		}
-		l := &logrus.Logger{
-			Out:       os.Stderr,
-			Formatter: new(logrus.TextFormatter),
-			Hooks:     make(logrus.LevelHooks),
-			Level:     level,
-		}
-		logger = logrus.NewEntry(l)
-	} else {
-		logger = log[0]
-	}
-	c.SudoOpt.ExecBySudo = true
-	if sudo && c.User != "root" && !c.IsContainer() {
-		switch {
-		case c.SudoOpt.ExecBySudo:
-			cmd = fmt.Sprintf("echo %s | sudo -S %s", c.Password, cmd)
-		case c.SudoOpt.ExecBySudoSh:
-			cmd = fmt.Sprintf("echo %s | sudo sh -c '%s'", c.Password, cmd)
-		default:
-			logger.Panicf("sudoOpt is invalid. SudoOpt: %v", c.SudoOpt)
-		}
-		if runtime.GOOS == "windows" || !conf.Conf.SSHExternal {
-			result = sshExecNative(c, cmd, sudo)
-		} else {
-			result = sshExecExternal(c, cmd, sudo)
-		}
-	}
-	logger = getSSHLogger(log...)
-	logger.Debug(result)
-	return
-}
-
-func sshExecNative(c conf.ServerInfo, cmd string, sudo bool) (result sshResult) {
-	result.Servername = c.ServerName
-	result.Host = c.Host
-	result.Port = c.Port
-
 	if (c.Port == "" || c.Port == "local") &&
 		(c.Host == "127.0.0.1" || c.Host == "localhost") {
-		return localExec(c, cmd, sudo, logger)
+		result = localExec(c, cmd, sudo, log...)
 	} else {
-		return sshExec(c, cmd, sudo, logger)
+		result = sshExec(c, cmd, sudo, log...)
 	}
+	logger := getSSHLogger(log...)
+	logger.Debug(result)
+	return result
 }
 
 func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
-	var err error
-	// Setup Logger
-	var logger *logrus.Entry = log[0]
 
 	// This is probably not 100% correct, but it works.  I don't know
 	// the details of what is going on to be able to assess how
@@ -192,8 +150,8 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	var stdoutBuf, stderrBuf bytes.Buffer
 	toExec.Stderr = &stderrBuf
 	toExec.Stdout = &stdoutBuf
-
-	if err := toExec.Run(); err != nil {
+	var err error
+	if err = toExec.Run(); err != nil {
 		result.ExitStatus = 999
 	} else {
 		result.ExitStatus = 0
@@ -201,17 +159,23 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	result.Stderr = stderrBuf.String()
 	result.Stdout = stdoutBuf.String()
 
-	logger.Debugf(
-		"Shell executed. cmd: %s, status: %#v\nstdout: \n%s\nstderr: \n%s",
-		maskPassword(cmd, c.Password), err, result.Stdout, result.Stderr)
+	return
+}
+
+func sshExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
+	if runtime.GOOS == "windows" || !conf.Conf.SSHExternal {
+		result = sshExecNative(c, cmd, sudo)
+	} else {
+		result = sshExecExternal(c, cmd, sudo)
+	}
 
 	return
 }
 
-// SSHExec should never be called directly
-func sshExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
-	var err error
-	var logger *logrus.Entry = log[0]
+func sshExecNative(c conf.ServerInfo, cmd string, sudo bool) (result sshResult) {
+	result.Servername = c.ServerName
+	result.Host = c.Host
+	result.Port = c.Port
 
 	var client *ssh.Client
 	var err error
@@ -329,7 +293,6 @@ func sshExecExternal(c conf.ServerInfo, cmd string, sudo bool) (result sshResult
 		sshBinaryPath, maskPassword(strings.Join(args, " "), c.Password))
 	return
 }
-
 func getSSHLogger(log ...*logrus.Entry) *logrus.Entry {
 	if len(log) == 0 {
 		return util.NewCustomLogger(conf.ServerInfo{})

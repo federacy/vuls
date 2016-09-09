@@ -159,6 +159,7 @@ func detectServerOSes() (sshAbleOses []osTypeInterface) {
 	Log.Info("Detecting OS of servers... ")
 	osTypeChan := make(chan osTypeInterface, len(config.Conf.Servers))
 	defer close(osTypeChan)
+	Log.Info("CONF SERVERS ARE: ", config.Conf.Servers)
 	for _, s := range config.Conf.Servers {
 		go func(s config.ServerInfo) {
 			defer func() {

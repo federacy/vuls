@@ -256,7 +256,7 @@ func (p *ScanCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 		logrus.Errorf("Error loading %s, %s", p.configPath, err)
 		return subcommands.ExitUsageError
 	}
-
+	logrus.SetLevel(logrus.DebugLevel)
 	logrus.Info("Start scanning")
 	logrus.Infof("config: %s", p.configPath)
 	if p.cvedbpath != "" {

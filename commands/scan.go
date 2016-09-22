@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 package commands
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -404,7 +405,8 @@ func (p *ScanCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 
 	// Get results to parse and put places
 	scanResults, err := scan.GetScanResults()
-	Log.Info("\n\n\nSCAN RESULTS: ", scanResults)
+	byts, err := json.Marshal(scanResults)
+	Log.Info("\n\n\nSCAN RESULTS: ", string(byts[:]))
 	if err != nil {
 		Log.Fatal(err)
 		return subcommands.ExitFailure

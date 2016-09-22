@@ -404,7 +404,7 @@ func (p *ScanCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 
 	// Get results to parse and put places
 	scanResults, err := scan.GetScanResults()
-	Log.Info("SCAN RESULTS: ", scanResults)
+	Log.Info("\n\n\nSCAN RESULTS: ", scanResults)
 	if err != nil {
 		Log.Fatal(err)
 		return subcommands.ExitFailure
@@ -424,8 +424,9 @@ func (p *ScanCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 		Log.Fatalf("Failed to insert. dbpath: %s, err: %s", c.Conf.DBPath, err)
 		return subcommands.ExitFailure
 	}
+	Log.Info("\n\n\nSCAN RESULTS AGAIN: ", scanResults)
 
-	Log.Info("Reporting...")
+	Log.Info("\n\nReporting...")
 	filtered := scanResults.FilterByCvssOver()
 	Log.Info("FILTERED RESULTS: ", filtered)
 	for _, w := range reports {

@@ -50,6 +50,7 @@ Vulsは上に挙げた手動運用での課題を解決するツールであり�
     - CIDRを指定してサーバを自動検出、設定ファイルのテンプレートを生成
 - EmailやSlackで通知可能（日本語でのレポートも可能）
 - 付属するTerminal-Based User Interfaceビューアでは、Vim風キーバインドでスキャン結果を参照可能
+- Web UI([VulsRepo](https://github.com/usiusi360/vulsrepo))を使えばピボットテーブルのように分析可能
 
 ----
 
@@ -88,6 +89,7 @@ Hello Vulsチュートリアルでは手動でのセットアップ方法で説�
 1. Prepare
 1. Scan
 1. TUI(Terminal-Based User Interface)で結果を参照する
+1. Web UI([VulsRepo](https://github.com/usiusi360/vulsrepo))で結果を参照する
 
 ## Step1. Launch Amazon Linux
 
@@ -111,6 +113,9 @@ $ ssh-keygen -t rsa
 $ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 $ chmod 600 ~/.ssh/authorized_keys
 ```
+
+VulsはSSHパスワード認証をサポートしていない。SSH公開鍵鍵認証を使う必要がある。
+また、パスワードありのSUDOもセキュリティ上の理由によりサポートしていないため、スキャン対象サーバに/etc/sudoersにNOPASSWDを設定して、パスワードなしでSUDO可能にする必要がある。
 
 ## Step3. Install requirements
 
@@ -268,6 +273,11 @@ $ vuls tui
 
 ![Vuls-TUI](img/hello-vuls-tui.png)
 
+## Step10. Web UI
+
+[VulsRepo](https://github.com/usiusi360/vulsrepo)はスキャン結果をビボットテーブルのように分析可能にするWeb UIである。  
+[Online Demo](http://usiusi360.github.io/vulsrepo/)があるので試してみて。
+
 ----
 
 # Architecture
@@ -278,32 +288,36 @@ $ vuls tui
 - NVDとJVN(日本語)から脆弱性データベースを取得し、SQLite3に格納する。
 
 ## Vuls
+![Vuls-Scan-Flow](img/vuls-scan-flow.png)
 - SSHでサーバに存在する脆弱性をスキャンし、CVE IDのリストを作成する
   - Dockerコンテナのスキャンする場合、VulsはまずDockerホストにSSHで接続する。その後、Dockerホスト上で `docker exec` 経由でコマンドを実効する。Dockerコンテナ内にSSHデーモンを起動する必要はない
 - 検出されたCVEの詳細情報をgo-cve-dictionaryから取得する
-- スキャン結果をSQLite3に格納する
 - スキャン結果レポートを生成し、SlackやEmailなどで送信する
-- スキャン結果の詳細情報はターミナル上で参照可能
+- スキャン結果をJSONファイルに出力すると詳細情報をターミナル上で参照可能
 
-![Vuls-Scan-Flow](img/vuls-scan-flow.png)
 
 ----
 # Performance Considerations
 
-- Ubuntu, Debian and CentOS  
-アップデート対象のパッケージが沢山ある場合は、Changelogをパースするので遅いし、スキャン対象サーバのリソースを消費する。
+- Ubuntu, Debian  
+`apt-get changelog`でアップデート対象のパッケージのチェンジログを取得し、含まれるCVE IDをパースする。
+アップデート対象のパッケージが沢山ある場合、チェンジログの取得に時間がかかるので、初回のスキャンは遅い。  
+ただ、２回目以降はキャッシュしたchangelogを使うので速くなる。  
+
+- CentOS  
+アップデート対象すべてのchangelogを一度で取得しパースする。スキャンスピードは速い、サーバリソース消費量は小さい。
 
 - Amazon, RHEL and FreeBSD  
 高速にスキャンし、スキャン対象サーバのリソース消費量は小さい。
 
-| Distribution|         Scan Speed | Resource Usage On Target Server |
-|:------------|:-------------------|:-------------|
-| Amazon      |               Fast | Light            |
-| RHEL        |               Fast | Light            |
-| FreeBSD     |               Fast | Light            |
-| Ubuntu      |               Slow | Heavy            |
-| Debian      |               Slow | Heavy            |
-| CentOS      |               Slow | Heavy            |
+| Distribution|         Scan Speed | 
+|:------------|:-------------------|
+| Ubuntu      | 初回は遅い / 2回目以降速い　|
+| Debian      | 初回は遅い / 2回目以降速い　|
+| CentOS      |               速い |
+| Amazon      |               速い | 
+| RHEL        |               速い | 
+| FreeBSD     |               速い |
 
 ----
 
@@ -327,7 +341,7 @@ web/app server in the same configuration under the load balancer
 |:------------|-------------------:|
 | Ubuntu      |          12, 14, 16|
 | Debian      |                7, 8|
-| RHEL        |          4, 5, 6, 7|
+| RHEL        |                6, 7|
 | CentOS      |             5, 6, 7|
 | Amazon Linux|                 All|
 | FreeBSD     |                  10|
@@ -503,13 +517,13 @@ host         = "172.31.4.82"
     また、以下のSSH認証をサポートしている。
     - SSH agent
     - SSH public key authentication (with password, empty password)
-    - Password authentication
+    SSH Password認証はサポートしていない
 
 ----
 
 # Usage: Configtest 
 
-configtestサブコマンドは、config.tomlで定義されたサーバ/コンテナに対してSSH可能かどうかをチェックする。
+configtestサブコマンドは、config.tomlで定義されたサーバ/コンテナに対してSSH可能かどうかをチェックする。  
 
 ```
 $ vuls configtest --help
@@ -531,6 +545,20 @@ configtest:
         Use external ssh command. Default: Use the Go native implementation
 ```
 
+また、スキャン対象サーバに対してパスワードなしでSUDO可能な状態かもチェックする。  
+
+スキャン対象サーバ上の`/etc/sudoers`のサンプル
+
+- CentOS, RHEL, Amazon Linux
+```
+vuls ALL=(root) NOPASSWD: /usr/bin/yum, /bin/echo
+```
+- Ubuntu, Debian
+```
+vuls ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt-cache
+```
+- Amazon Linux, FreeBSDはRoot権限なしでスキャン可能
+
 ----
 
 # Usage: Prepare
@@ -541,8 +569,8 @@ Prepareサブコマンドは、Vuls内部で利用する以下のパッケージ
 |:------------|-------------------:|:-------------|
 | Ubuntu      |          12, 14, 16| -            |
 | Debian      |                7, 8| aptitude     |
-| CentOS      |                   5| yum-plugin-security, yum-changelog |
-| CentOS      |                6, 7| yum-plugin-security, yum-plugin-changelog |
+| CentOS      |                   5| yum-changelog |
+| CentOS      |                6, 7| yum-plugin-changelog |
 | Amazon      |                All | -            |
 | RHEL        |         4, 5, 6, 7 | -            |
 | FreeBSD     |                 10 | -            |
@@ -552,20 +580,15 @@ Prepareサブコマンドは、Vuls内部で利用する以下のパッケージ
 $ vuls prepare -help
 prepare
                         [-config=/path/to/config.toml] [-debug]
-                        [-ask-sudo-password]
                         [-ask-key-password]
                         [SERVER]...
 
   -ask-key-password
         Ask ssh privatekey password before scanning
-  -ask-sudo-password
-        Ask sudo password of target servers before scanning
   -config string
         /path/to/toml (default "$PWD/config.toml")
   -debug
         debug mode
-  -use-unattended-upgrades
-        [Deprecated] For Ubuntu, install unattended-upgrades
 ```
 
 ----
@@ -573,18 +596,19 @@ prepare
 # Usage: Scan
 
 ```
-
 $ vuls scan -help
 scan:
         scan
                 [-lang=en|ja]
                 [-config=/path/to/config.toml]
-                [-dbpath=/path/to/vuls.sqlite3]
-                [--cve-dictionary-dbpath=/path/to/cve.sqlite3]
+                [-results-dir=/path/to/results]
+                [-cve-dictionary-dbpath=/path/to/cve.sqlite3]
                 [-cve-dictionary-url=http://127.0.0.1:1323]
+                [-cache-dbpath=/path/to/cache.db]
                 [-cvss-over=7]
                 [-ignore-unscored-cves]
                 [-ssh-external]
+                [-containers-only]
                 [-report-azure-blob]
                 [-report-json]
                 [-report-mail]
@@ -592,7 +616,6 @@ scan:
                 [-report-slack]
                 [-report-text]
                 [-http-proxy=http://192.168.0.1:8080]
-                [-ask-sudo-password]
                 [-ask-key-password]
                 [-debug]
                 [-debug-sql]
@@ -605,11 +628,8 @@ scan:
                 [SERVER]...
 
 
-
   -ask-key-password
         Ask ssh privatekey password before scanning
-  -ask-sudo-password
-        Ask sudo password of target servers before scanning
   -aws-profile string
         AWS Profile to use (default "default")
   -aws-region string
@@ -622,16 +642,18 @@ scan:
         Azure storage container name
   -azure-key string
         Azure account key to use. AZURE_STORAGE_ACCESS_KEY environment variable is used if not specified
+  -cache-dbpath string
+        /path/to/cache.db (local cache of changelog for Ubuntu/Debian) (default "$PWD/cache.db")
   -config string
         /path/to/toml (default "$PWD/config.toml")
+  -containers-only
+        Scan concontainers Only. Default: Scan both of hosts and containers
   -cve-dictionary-dbpath string
         /path/to/sqlite3 (For get cve detail from cve.sqlite3)        
   -cve-dictionary-url string
         http://CVE.Dictionary (default "http://127.0.0.1:1323")
   -cvss-over float
         -cvss-over=6.5 means reporting CVSS Score 6.5 and over (default: 0 (means report all))
-  -dbpath string
-        /path/to/sqlite3 (default "$PWD/vuls.sqlite3")
   -debug
         debug mode
   -debug-sql
@@ -652,13 +674,10 @@ scan:
         Send report via Slack
   -report-text
         Write report to text files ($PWD/results/current)
+  -results-dir string
+        /path/to/results (default "$PWD/results")
   -ssh-external
         Use external ssh command. Default: Use the Go native implementation
-  -use-unattended-upgrades
-        [Deprecated] For Ubuntu. Scan by unattended-upgrades or not (use apt-get upgrade --dry-run by default)
-  -use-yum-plugin-security
-        [Deprecated] For CentOS 5. Scan by yum-plugin-security or not (use yum check-update by default)
-
 ```
 
 ## -ssh-external option
@@ -669,7 +688,11 @@ Vulsは２種類のSSH接続方法をサポートしている。
 これは、SSHコマンドがインストールされていない環境でも動作する（Windowsなど）  
 
 外部SSHコマンドを使ってスキャンするためには、`-ssh-external`を指定する。
-SSH Configが使えるので、ProxyCommandを使った多段SSHなどが可能。
+SSH Configが使えるので、ProxyCommandを使った多段SSHなどが可能。  
+CentOSでは、スキャン対象サーバの/etc/sudoersに以下を追加する必要がある(user: vuls)
+```
+Defaults:vuls !requiretty
+```
 
 ## -ask-key-password option 
 
@@ -677,14 +700,6 @@ SSH Configが使えるので、ProxyCommandを使った多段SSHなどが可能�
 |:-----------------|:-------------------|:----|
 | empty password   |                 -  | |
 | with password    |           required | or use ssh-agent |
-
-## -ask-sudo-password option
-
-| sudo password on target servers | -ask-sudo-password | |
-|:-----------------|:-------|:------|
-| NOPASSWORD       | - | defined as NOPASSWORD in /etc/sudoers on target servers |
-| with password    | required |  |
-
 
 ## -report-json , -report-text option
 
@@ -698,12 +713,10 @@ $ vuls scan \
       -report-slack \ 
       -report-mail \
       -cvss-over=7 \
-      -ask-sudo-password \ 
       -ask-key-password \
       -cve-dictionary-dbpath=$PWD/cve.sqlite3
 ```
 この例では、
-- スキャン対象サーバのsudoパスワードを指定
 - SSH公開鍵認証（秘密鍵パスフレーズ）を指定
 - configに定義された全サーバをスキャン
 - レポートをslack, emailに送信
@@ -738,7 +751,6 @@ $ vuls scan \
 ```
 この例では、
 - SSH公開鍵認証（秘密鍵パスフレーズなし）
-- ノーパスワードでsudoが実行可能
 - configに定義された全サーバをスキャン
 - 結果をJSON形式でS3に格納する。
   - バケット名 ... vuls
@@ -760,7 +772,6 @@ $ vuls scan \
 ```
 この例では、
 - SSH公開鍵認証（秘密鍵パスフレーズなし）
-- ノーパスワードでsudoが実行可能
 - configに定義された全サーバをスキャン
 - 結果をJSON形式でAzure Blobに格納する。
   - コンテナ名 ... vuls
@@ -821,7 +832,7 @@ optional = [
 
 # Usage: Scan vulnerability of non-OS package
 
-Vulsは、[CPE](https://nvd.nist.gov/cpe.cfm)に登録されているソフトウェアであれば、OSパッケージ以外のソフトウェアの脆弱性もスキャン可能。
+Vulsは、[CPE](https://nvd.nist.gov/cpe.cfm)に登録されているソフトウェアであれば、OSパッケージ以外のソフトウェアの脆弱性もスキャン可能。  
 たとえば、自分でコンパイルしたものや、言語のライブラリ、フレームワークなど。
 
 -  CPEの検索方法
@@ -850,7 +861,7 @@ Vulsは、[CPE](https://nvd.nist.gov/cpe.cfm)に登録されているソフト�
 DockerコンテナはSSHデーモンを起動しないで運用するケースが一般的。  
  [Docker Blog:Why you don't need to run SSHd in your Docker containers](https://blog.docker.com/2014/06/why-you-dont-need-to-run-sshd-in-docker/)
 
-Vulsは、DockerホストにSSHで接続し、`docker exec`でDockerコンテナにコマンドを発行して脆弱性をスキャンする。
+Vulsは、DockerホストにSSHで接続し、`docker exec`でDockerコンテナにコマンドを発行して脆弱性をスキャンする。  
 詳細は、[Architecture section](https://github.com/future-architect/vuls#architecture)を参照
 
 - 全ての起動中のDockerコンテナをスキャン  
@@ -865,10 +876,10 @@ Vulsは、DockerホストにSSHで接続し、`docker exec`でDockerコンテナ
     containers = ["${running}"]
     ```
 
-- あるコンテナのみスキャン
-  コンテナID、または、コンテナ名を、containersに指定する。
-  以下の例では、`container_name_a`と、`4aa37a8b63b9`のコンテナのみスキャンする
-  スキャン実行前に、コンテナが起動中か確認すること。もし起動してない場合はエラーメッセージを出力してスキャンを中断する。
+- あるコンテナのみスキャン  
+  コンテナID、または、コンテナ名を、containersに指定する。  
+  以下の例では、`container_name_a`と、`4aa37a8b63b9`のコンテナのみスキャンする  
+  スキャン実行前に、コンテナが起動中か確認すること。もし起動してない場合はエラーメッセージを出力してスキャンを中断する。  
     ```
     [servers]
 
@@ -878,6 +889,9 @@ Vulsは、DockerホストにSSHで接続し、`docker exec`でDockerコンテナ
     keyPath     = "/home/username/.ssh/id_rsa"
     containers = ["container_name_a", "4aa37a8b63b9"]
     ```
+- コンテナのみをスキャンする場合（ホストはスキャンしない）  
+  --containers-onlyオプションを指定する
+
 
 # Usage: TUI
 
@@ -886,10 +900,10 @@ Vulsは、DockerホストにSSHで接続し、`docker exec`でDockerコンテナ
 ```
 $ vuls tui -h
 tui:
-	tui [-dbpath=/path/to/vuls.sqlite3]
+	tui [-results-dir=/path/to/results]
 
-  -dbpath string
-        /path/to/sqlite3 (default "$PWD/vuls.sqlite3")
+  -results-dir string
+        /path/to/results (default "$PWD/results")
   -debug-sql
     	debug SQL
 
@@ -970,7 +984,7 @@ fetchnvd:
 - Fetch data of the entire period
 
 ```
-$ go-cve-dictionary fetchnvd -entire
+$ for i in {2002..2016}; do go-cve-dictionary fetchnvd -years $i; done
 ```
 
 - Fetch data in the last 2 years
@@ -985,66 +999,71 @@ $ go-cve-dictionary fetchnvd -last2y
 
 - JVNから日本語の脆弱性情報を取得
     ```
-    $ go-cve-dictionary fetchjvn -help
+    $ go-cve-dictionary fetchjvn -h
     fetchjvn:
-            fetchjvn [-dump-path=$PWD/cve] [-dpath=$PWD/vuls.sqlite3] [-week] [-month] [-entire]
+            fetchjvn
+                    [-latest]
+                    [-last2y]
+                    [-years] 1998 1999 ...
+                    [-dbpath=$PWD/cve.sqlite3]
+                    [-http-proxy=http://192.168.0.1:8080]
+                    [-debug]
+                    [-debug-sql]
 
       -dbpath string
-            /path/to/sqlite3/DBfile (default "$PWD/cve.sqlite3")
+            /path/to/sqlite3 (default "$PWD/cve.sqlite3")
       -debug
             debug mode
       -debug-sql
             SQL debug mode
-      -dump-path string
-            /path/to/dump.json (default "$PWD/cve.json")
-      -entire
-            Fetch data for entire period.(This operation is time-consuming) (default: false)
-      -month
-            Fetch data in the last month (default: false)
-      -week
-            Fetch data in the last week. (default: false)
+      -http-proxy string
+            http://proxy-url:port (default: empty)
+      -last2y
+            Refresh JVN data in the last two years.
+      -latest
+            Refresh JVN data for latest.
+      -years
+            Refresh JVN data of specific years.
 
     ```
 
-- すべての期間の脆弱性情報を取得(1時間以上かかる)
+- すべての期間の脆弱性情報を取得(10分未満)
     ```
-    $ go-cve-dictionary fetchjvn -entire
-    ```
-
-- 直近1ヶ月間に更新された脆弱性情報を取得(1分未満)
-    ```
-    $ go-cve-dictionary fetchjvn -month
+    $ for i in {1998..2016}; do ./go-cve-dictionary fetchjvn -years $i; done
     ```
 
-- 直近1週間に更新された脆弱性情報を取得(1分未満)
+- 2年分の情報を取得
     ```
-    $ go-cve-dictionary fetchjvn -week
+    $ go-cve-dictionary fetchjvn -last2y
+    ```
+
+- 最新情報のみ取得
+    ```
+    $ go-cve-dictionary fetchjvn -latest
     ```
 
 - 脆弱性情報の自動アップデート  
 Cronなどのジョブスケジューラを用いて実現可能。  
--week オプションを指定して夜間の日次実行を推奨。
+-latestオプションを指定して夜間の日次実行を推奨。
 
-- 注意
-NVDとJVNの両方の情報を取得する場合、NVDからの情報を取得した後でJVNの情報を取得することを勧める
-2016年7月現在で、
+## fetchnvd, fetchjvnの実行順序の注意
 
-    ```
-    $ go-cve-dictionary fetchnvd -years 2002 2003 2004 2005 2006 2007 2008 2009 2010 2011 2012 2013 2014 2015 2016 
+  **fetchjvn -> fetchnvdの順番だとすごく時間がかかる** (2016年9月現在)  
+  **fetchnvd -> fetchjvnの順番で実行すること**  
 
-    $ go-cve-dictionary fetchjvn -entire 
-    ```
+```
+$ for i in {2002..2016}; do go-cve-dictionary fetchnvd -years $i; done
+$ for i in {1998..2016}; do go-cve-dictionary fetchjvn -years $i; done
+```
+の順でやった場合、最初のコマンドが15分程度、二つ目のコマンドが10分程度（環境依存）
 
-の順でやった場合、最初のコマンドが15分程度、二つ目のコマンドが70分程度で、トータルでも1時間半程度で終わる(環境依存)が、
 
-    ```
-    $ go-cve-dictionary fetchjvn -entire 
-
-    $ nohup go-cve-dictionary fetchnvd -years 2002 2003 2004 2005 2006 2007 2008 2009 2010 2011 2012 2013 2014 2015 2016 &
-    ```
-
+```
+$ for i in {1998..2016}; do go-cve-dictionary fetchjvn -years $i; done
+$ for i in {2002..2016}; do go-cve-dictionary fetchnvd -years $i; done
+```
 の順で行うと、最初のコマンドは1時間くらいで終わるが二つ目のコマンドが21時間かかることもある(環境依存)。
-時間がかかりそうな時は上記のようにnohupして進捗を確認するようにした方が精神衛生的にも良い。
+
 
 ## スキャン実行
 
@@ -1080,7 +1099,8 @@ $ go install
 
 # Update Vuls With Glide
 
-- Update go-cve-dictionary
+- Update go-cve-dictionary  
+If the DB schema was changed, please specify new SQLite3 DB file.
 ```
 $ cd $GOPATH/src/github.com/kotakanbe/go-cve-dictionary
 $ git pull
@@ -1095,8 +1115,7 @@ $ git pull
 $ glide install
 $ go install
 ```
-- The binaries are created under $GOPARH/bin
-- If the DB schema was changed, please specify new SQLite3 DB file.
+- バイナリファイルは`$GOPARH/bin`以下に作成される
 
 ---
 
@@ -1116,12 +1135,12 @@ Use Systemd, Upstart or supervisord, daemontools...
 CRONなどを使えば可能
 
 - 自動定期スキャン  
-CRONなどを使い、自動化のためにsudoと、秘密鍵のパスワードなしでも実行可能なようにする
+CRONなどを使い、自動化のためにsudoと、秘密鍵のパスワードなしでも実行可能なようにする  
   - スキャン対象サーバの /etc/sudoers に NOPASSWORD を設定する  
   - 秘密鍵パスフレーズなしの公開鍵認証か、ssh-agentを使う  
 
-- スキャンが重く感じる
-vulsのスキャン対象に脆弱性が溜まりすぎると実行時間が長くなります
+- スキャンが重く感じる  
+vulsのスキャン対象に脆弱性が溜まりすぎると実行時間が長くなります 
 脆弱性のある状態は溜めすぎないようにしましょう
 
 - クロスコンパイル

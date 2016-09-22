@@ -19,8 +19,10 @@ package scan
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/future-architect/vuls/config"
@@ -30,9 +32,8 @@ import (
 
 type base struct {
 	ServerInfo config.ServerInfo
+	Distro     config.Distro
 
-	Family   string
-	Release  string
 	Platform models.Platform
 	osPackages
 
@@ -60,13 +61,20 @@ func (l base) getServerInfo() config.ServerInfo {
 	return l.ServerInfo
 }
 
-func (l *base) setDistributionInfo(fam, rel string) {
-	l.Family = fam
-	l.Release = rel
+func (l *base) setDistro(fam, rel string) {
+	d := config.Distro{
+		Family:  fam,
+		Release: rel,
+	}
+	l.Distro = d
+
+	s := l.getServerInfo()
+	s.Distro = d
+	l.setServerInfo(s)
 }
 
-func (l base) getDistributionInfo() string {
-	return fmt.Sprintf("%s %s", l.Family, l.Release)
+func (l base) getDistro() config.Distro {
+	return l.Distro
 }
 
 func (l *base) setPlatform(p models.Platform) {
@@ -172,9 +180,7 @@ func (l base) detectRunningOnAws() (ok bool, instanceID string, err error) {
 		r := l.exec(cmd, noSudo)
 		if r.isSuccess() {
 			id := strings.TrimSpace(r.Stdout)
-
-			if id == "not found" {
-				// status: 0, stdout: "not found" on degitalocean or Azure
+			if !l.isAwsInstanceID(id) {
 				return false, "", nil
 			}
 			return true, id, nil
@@ -194,6 +200,9 @@ func (l base) detectRunningOnAws() (ok bool, instanceID string, err error) {
 		r := l.exec(cmd, noSudo)
 		if r.isSuccess() {
 			id := strings.TrimSpace(r.Stdout)
+			if !l.isAwsInstanceID(id) {
+				return false, "", nil
+			}
 			return true, id, nil
 		}
 
@@ -208,6 +217,13 @@ func (l base) detectRunningOnAws() (ok bool, instanceID string, err error) {
 	return false, "", fmt.Errorf(
 		"Failed to curl or wget to AWS instance metadata on %s. container: %s",
 		l.ServerInfo.ServerName, l.ServerInfo.Container.Name)
+}
+
+// http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/resource-ids.html
+var awsInstanceIDPattern = regexp.MustCompile(`^i-[0-9a-f]+$`)
+
+func (l base) isAwsInstanceID(str string) bool {
+	return awsInstanceIDPattern.MatchString(str)
 }
 
 func (l *base) convertToModel() (models.ScanResult, error) {
@@ -247,8 +263,9 @@ func (l *base) convertToModel() (models.ScanResult, error) {
 
 	return models.ScanResult{
 		ServerName:  l.ServerInfo.ServerName,
-		Family:      l.Family,
-		Release:     l.Release,
+		ScannedAt:   time.Now(),
+		Family:      l.Distro.Family,
+		Release:     l.Distro.Release,
 		Container:   container,
 		Platform:    l.Platform,
 		KnownCves:   scoredCves,

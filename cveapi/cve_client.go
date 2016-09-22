@@ -59,7 +59,7 @@ func (api cvedictClient) CheckHealth() (ok bool, err error) {
 	var resp *http.Response
 	resp, _, errs = gorequest.New().SetDebug(config.Conf.Debug).Get(url).End()
 	//  resp, _, errs = gorequest.New().Proxy(api.httpProxy).Get(url).End()
-	if len(errs) > 0 || resp == nil || resp.StatusCode != 200 {
+	if 0 < len(errs) || resp == nil || resp.StatusCode != 200 {
 		return false, fmt.Errorf("Failed to request to CVE server. url: %s, errs: %v", url, errs)
 	}
 	return true, nil
@@ -186,41 +186,6 @@ func (api cvedictClient) httpGet(key, url string, resChan chan<- response, errCh
 	}
 }
 
-//  func (api cvedictClient) httpGet(key, url string, query map[string]string, resChan chan<- response, errChan chan<- error) {
-
-//      var body string
-//      var errs []error
-//      var resp *http.Response
-//      f := func() (err error) {
-//          req := gorequest.New().SetDebug(true).Proxy(api.httpProxy).Get(url)
-//          for key := range query {
-//              req = req.Query(fmt.Sprintf("%s=%s", key, query[key])).Set("Content-Type", "application/x-www-form-urlencoded")
-//          }
-//          pp.Println(req)
-//          resp, body, errs = req.End()
-//          if len(errs) > 0 || resp.StatusCode != 200 {
-//              errChan <- fmt.Errorf("HTTP error. errs: %v, url: %s", errs, url)
-//          }
-//          return nil
-//      }
-//      notify := func(err error, t time.Duration) {
-//          log.Warnf("Failed to get. retrying in %s seconds. err: %s", t, err)
-//      }
-//      err := backoff.RetryNotify(f, backoff.NewExponentialBackOff(), notify)
-//      if err != nil {
-//          errChan <- fmt.Errorf("HTTP Error %s", err)
-//      }
-//      //  resChan <- body
-//      cveDetail := cve.CveDetail{}
-//      if err := json.Unmarshal([]byte(body), &cveDetail); err != nil {
-//          errChan <- fmt.Errorf("Failed to Unmarshall. body: %s, err: %s", body, err)
-//      }
-//      resChan <- response{
-//          key,
-//          cveDetail,
-//      }
-//  }
-
 type responseGetCveDetailByCpeName struct {
 	CpeName    string
 	CveDetails []cve.CveDetail
@@ -252,7 +217,7 @@ func (api cvedictClient) httpPost(key, url string, query map[string]string) ([]c
 			req = req.Send(fmt.Sprintf("%s=%s", key, query[key])).Type("json")
 		}
 		resp, body, errs = req.End()
-		if len(errs) > 0 || resp == nil || resp.StatusCode != 200 {
+		if 0 < len(errs) || resp == nil || resp.StatusCode != 200 {
 			return fmt.Errorf("HTTP POST error: %v, url: %s, resp: %v", errs, url, resp)
 		}
 		return nil

@@ -44,11 +44,13 @@ type Config struct {
 	CvssScoreOver      float64
 	IgnoreUnscoredCves bool
 
-	SSHExternal bool
+	SSHExternal    bool
+	ContainersOnly bool
 
-	HTTPProxy string `valid:"url"`
-	DBPath    string
-	CveDBPath string
+	HTTPProxy   string `valid:"url"`
+	ResultsDir  string
+	CveDBPath   string
+	CacheDBPath string
 
 	AwsProfile string
 	AwsRegion  string
@@ -60,25 +62,30 @@ type Config struct {
 
 	//  CpeNames      []string
 	//  SummaryMode          bool
-	UseYumPluginSecurity  bool
-	UseUnattendedUpgrades bool
 }
 
 // Validate configuration
 func (c Config) Validate() bool {
 	errs := []error{}
 
-	if len(c.DBPath) != 0 {
-		if ok, _ := valid.IsFilePath(c.DBPath); !ok {
+	if len(c.ResultsDir) != 0 {
+		if ok, _ := valid.IsFilePath(c.ResultsDir); !ok {
 			errs = append(errs, fmt.Errorf(
-				"SQLite3 DB path must be a *Absolute* file path. dbpath: %s", c.DBPath))
+				"JSON base directory must be a *Absolute* file path. -results-dir: %s", c.ResultsDir))
 		}
 	}
 
 	if len(c.CveDBPath) != 0 {
 		if ok, _ := valid.IsFilePath(c.CveDBPath); !ok {
 			errs = append(errs, fmt.Errorf(
-				"SQLite3 DB(Cve Dictionary) path must be a *Absolute* file path. dbpath: %s", c.CveDBPath))
+				"SQLite3 DB(Cve Dictionary) path must be a *Absolute* file path. -cve-dictionary-dbpath: %s", c.CveDBPath))
+		}
+	}
+
+	if len(c.CacheDBPath) != 0 {
+		if ok, _ := valid.IsFilePath(c.CacheDBPath); !ok {
+			errs = append(errs, fmt.Errorf(
+				"Cache DB path must be a *Absolute* file path. -cache-dbpath: %s", c.CacheDBPath))
 		}
 	}
 
@@ -216,7 +223,6 @@ func (c *SlackConf) Validate() (errs []error) {
 type ServerInfo struct {
 	ServerName  string
 	User        string
-	Password    string
 	Host        string
 	Port        string
 	KeyPath     string
@@ -232,9 +238,27 @@ type ServerInfo struct {
 
 	// used internal
 	LogMsgAnsiColor string // DebugLog Color
-	SudoOpt         SudoOption
 	Container       Container
-	Family          string
+	Distro          Distro
+}
+
+// GetServerName returns ServerName if this serverInfo is about host.
+// If this serverInfo is abount a container, returns containerID@ServerName
+func (s ServerInfo) GetServerName() string {
+	if len(s.Container.ContainerID) == 0 {
+		return s.ServerName
+	}
+	return fmt.Sprintf("%s@%s", s.Container.ContainerID, s.ServerName)
+}
+
+// Distro has distribution info
+type Distro struct {
+	Family  string
+	Release string
+}
+
+func (l Distro) String() string {
+	return fmt.Sprintf("%s %s", l.Family, l.Release)
 }
 
 // IsContainer returns whether this ServerInfo is about container
@@ -252,14 +276,4 @@ type Container struct {
 	ContainerID string
 	Name        string
 	Type        string
-}
-
-// SudoOption is flag of sudo option.
-type SudoOption struct {
-
-	// echo pass | sudo -S ls
-	ExecBySudo bool
-
-	// echo pass | sudo sh -C 'ls'
-	ExecBySudoSh bool
 }

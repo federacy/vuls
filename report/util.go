@@ -30,32 +30,34 @@ import (
 	"github.com/gosuri/uitable"
 )
 
-func ensureResultDir() (path string, err error) {
-	if resultDirPath != "" {
-		return resultDirPath, nil
-	}
-
+func ensureResultDir(scannedAt time.Time) (path string, err error) {
 	const timeLayout = "20060102_1504"
-	timedir := time.Now().Format(timeLayout)
-	wd, _ := os.Getwd()
-	dir := filepath.Join(wd, "results", timedir)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	jsonDirName := scannedAt.Format(timeLayout)
+
+	resultsDir := config.Conf.ResultsDir
+	if len(resultsDir) == 0 {
+		wd, _ := os.Getwd()
+		resultsDir = filepath.Join(wd, "results")
+	}
+	jsonDir := filepath.Join(resultsDir, jsonDirName)
+
+	if err := os.MkdirAll(jsonDir, 0700); err != nil {
 		return "", fmt.Errorf("Failed to create dir: %s", err)
 	}
 
-	symlinkPath := filepath.Join(wd, "results", "current")
-	if _, err := os.Stat(symlinkPath); err == nil {
+	symlinkPath := filepath.Join(resultsDir, "current")
+	if _, err := os.Lstat(symlinkPath); err == nil {
 		if err := os.Remove(symlinkPath); err != nil {
 			return "", fmt.Errorf(
 				"Failed to remove symlink. path: %s, err: %s", symlinkPath, err)
 		}
 	}
 
-	if err := os.Symlink(dir, symlinkPath); err != nil {
+	if err := os.Symlink(jsonDir, symlinkPath); err != nil {
 		return "", fmt.Errorf(
 			"Failed to create symlink: path: %s, err: %s", symlinkPath, err)
 	}
-	return dir, nil
+	return jsonDir, nil
 }
 
 func toPlainText(scanResult models.ScanResult) (string, error) {
@@ -205,13 +207,11 @@ func toPlainTextUnknownCve(cveInfo models.CveInfo, osFamily string) string {
 }
 
 func toPlainTextDetailsLangJa(cveInfo models.CveInfo, osFamily string) string {
-
 	cveDetail := cveInfo.CveDetail
 	cveID := cveDetail.CveID
 	jvn := cveDetail.Jvn
 
 	dtable := uitable.New()
-	//TODO resize
 	dtable.MaxColWidth = 100
 	dtable.Wrap = true
 	dtable.AddRow(cveID)
@@ -228,6 +228,8 @@ func toPlainTextDetailsLangJa(cveInfo models.CveInfo, osFamily string) string {
 	dtable.AddRow("Vector", jvn.CvssVector())
 	dtable.AddRow("Title", jvn.CveTitle())
 	dtable.AddRow("Description", jvn.CveSummary())
+	dtable.AddRow(cveDetail.CweID(), cweURL(cveDetail.CweID()))
+	dtable.AddRow(cveDetail.CweID()+"(JVN)", cweJvnURL(cveDetail.CweID()))
 
 	dtable.AddRow("JVN", jvn.Link())
 	dtable.AddRow("NVD", fmt.Sprintf("%s?vulnId=%s", nvdBaseURL, cveID))
@@ -252,7 +254,6 @@ func toPlainTextDetailsLangEn(d models.CveInfo, osFamily string) string {
 	nvd := cveDetail.Nvd
 
 	dtable := uitable.New()
-	//TODO resize
 	dtable.MaxColWidth = 100
 	dtable.Wrap = true
 	dtable.AddRow(cveID)
@@ -270,6 +271,8 @@ func toPlainTextDetailsLangEn(d models.CveInfo, osFamily string) string {
 
 	dtable.AddRow("Vector", nvd.CvssVector())
 	dtable.AddRow("Summary", nvd.CveSummary())
+	dtable.AddRow("CWE", cweURL(cveDetail.CweID()))
+
 	dtable.AddRow("NVD", fmt.Sprintf("%s?vulnId=%s", nvdBaseURL, cveID))
 	dtable.AddRow("MITRE", fmt.Sprintf("%s%s", mitreBaseURL, cveID))
 	dtable.AddRow("CVE Details", fmt.Sprintf("%s/%s", cveDetailsBaseURL, cveID))
@@ -375,4 +378,13 @@ func addCpeNames(table *uitable.Table, names []models.CpeName) *uitable.Table {
 		table.AddRow("CPE", fmt.Sprintf("%s", p.Name))
 	}
 	return table
+}
+
+func cweURL(cweID string) string {
+	return fmt.Sprintf("https://cwe.mitre.org/data/definitions/%s.html",
+		strings.TrimPrefix(cweID, "CWE-"))
+}
+
+func cweJvnURL(cweID string) string {
+	return fmt.Sprintf("http://jvndb.jvn.jp/ja/cwe/%s.html", cweID)
 }

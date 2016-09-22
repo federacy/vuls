@@ -22,21 +22,22 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/future-architect/vuls/models"
 )
 
 // TextFileWriter writes results to file.
-type TextFileWriter struct{}
+type TextFileWriter struct {
+	ScannedAt time.Time
+}
 
 func (w TextFileWriter) Write(scanResults []models.ScanResult) (err error) {
-
-	path, err := ensureResultDir()
-
+	path, err := ensureResultDir(w.ScannedAt)
 	all := []string{}
 	for _, r := range scanResults {
 		textFilePath := ""
-		if r.Container.ContainerID == "" {
+		if len(r.Container.ContainerID) == 0 {
 			textFilePath = filepath.Join(path, fmt.Sprintf("%s.txt", r.ServerName))
 		} else {
 			textFilePath = filepath.Join(path,
@@ -48,7 +49,7 @@ func (w TextFileWriter) Write(scanResults []models.ScanResult) (err error) {
 		}
 		all = append(all, text)
 		b := []byte(text)
-		if err := ioutil.WriteFile(textFilePath, b, 0644); err != nil {
+		if err := ioutil.WriteFile(textFilePath, b, 0600); err != nil {
 			return fmt.Errorf("Failed to write text files. path: %s, err: %s", textFilePath, err)
 		}
 	}
@@ -56,7 +57,7 @@ func (w TextFileWriter) Write(scanResults []models.ScanResult) (err error) {
 	text := strings.Join(all, "\n\n")
 	b := []byte(text)
 	allPath := filepath.Join(path, "all.txt")
-	if err := ioutil.WriteFile(allPath, b, 0644); err != nil {
+	if err := ioutil.WriteFile(allPath, b, 0600); err != nil {
 		return fmt.Errorf("Failed to write text files. path: %s, err: %s", allPath, err)
 	}
 	return nil

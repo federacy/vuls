@@ -42,20 +42,16 @@ type redhat struct {
 func newRedhat(c config.ServerInfo) *redhat {
 	r := &redhat{}
 	r.log = util.NewCustomLogger(c)
+	r.setServerInfo(c)
 	return r
 }
 
 // https://github.com/serverspec/specinfra/blob/master/lib/specinfra/helper/detect_os/redhat.rb
 func detectRedhat(c config.ServerInfo) (itsMe bool, red osTypeInterface) {
-
 	red = newRedhat(c)
 
-	// set sudo option flag
-	c.SudoOpt = config.SudoOption{ExecBySudo: true}
-	red.setServerInfo(c)
-
 	if r := exec(c, "ls /etc/fedora-release", noSudo); r.isSuccess() {
-		red.setDistributionInfo("fedora", "unknown")
+		red.setDistro("fedora", "unknown")
 		Log.Warn("Fedora not tested yet: %s", r)
 		return true, red
 	}
@@ -66,7 +62,7 @@ func detectRedhat(c config.ServerInfo) (itsMe bool, red osTypeInterface) {
 		// $ cat /etc/redhat-release
 		// CentOS release 6.5 (Final)
 		if r := exec(c, "cat /etc/redhat-release", noSudo); r.isSuccess() {
-			re, _ := regexp.Compile(`(.*) release (\d[\d.]*)`)
+			re := regexp.MustCompile(`(.*) release (\d[\d.]*)`)
 			result := re.FindStringSubmatch(strings.TrimSpace(r.Stdout))
 			if len(result) != 3 {
 				Log.Warn("Failed to parse RedHat/CentOS version: %s", r)
@@ -76,9 +72,9 @@ func detectRedhat(c config.ServerInfo) (itsMe bool, red osTypeInterface) {
 			release := result[2]
 			switch strings.ToLower(result[1]) {
 			case "centos", "centos linux":
-				red.setDistributionInfo("centos", release)
+				red.setDistro("centos", release)
 			default:
-				red.setDistributionInfo("rhel", release)
+				red.setDistro("rhel", release)
 			}
 			return true, red
 		}
@@ -94,7 +90,7 @@ func detectRedhat(c config.ServerInfo) (itsMe bool, red osTypeInterface) {
 				release = fields[4]
 			}
 		}
-		red.setDistributionInfo(family, release)
+		red.setDistro(family, release)
 		return true, red
 	}
 
@@ -102,49 +98,38 @@ func detectRedhat(c config.ServerInfo) (itsMe bool, red osTypeInterface) {
 	return false, red
 }
 
-// CentOS 5 ... yum-plugin-security, yum-changelog
-// CentOS 6 ... yum-plugin-security, yum-plugin-changelog
-// CentOS 7 ... yum-plugin-security, yum-plugin-changelog
+func (o *redhat) checkIfSudoNoPasswd() error {
+	r := o.exec("yum --version", o.sudo())
+	if !r.isSuccess() {
+		o.log.Errorf("sudo error on %s", r)
+		return fmt.Errorf("Failed to sudo: %s", r)
+	}
+	o.log.Infof("sudo ... OK")
+	return nil
+}
+
+// CentOS 5 ... yum-changelog
+// CentOS 6 ... yum-plugin-changelog
+// CentOS 7 ... yum-plugin-changelog
 // RHEL, Amazon ... no additinal packages needed
 func (o *redhat) install() error {
-
-	switch o.Family {
+	switch o.Distro.Family {
 	case "rhel", "amazon":
 		o.log.Infof("Nothing to do")
 		return nil
 	}
-
-	if err := o.installYumPluginSecurity(); err != nil {
-		return err
-	}
+	// CentOS
 	return o.installYumChangelog()
 }
 
-func (o *redhat) installYumPluginSecurity() error {
-
-	if r := o.exec("rpm -q yum-plugin-security", noSudo); r.isSuccess() {
-		o.log.Infof("Ignored: yum-plugin-security already installed")
-		return nil
-	}
-
-	o.log.Info("Installing yum-plugin-security...")
-	cmd := util.PrependProxyEnv("yum install -y yum-plugin-security")
-	if r := o.exec(cmd, sudo); !r.isSuccess() {
-		return fmt.Errorf("Failed to SSH: %s", r)
-	}
-	return nil
-}
-
 func (o *redhat) installYumChangelog() error {
-
-	if o.Family == "centos" {
+	if o.Distro.Family == "centos" {
 		var majorVersion int
-		if 0 < len(o.Release) {
-			majorVersion, _ = strconv.Atoi(strings.Split(o.Release, ".")[0])
+		if 0 < len(o.Distro.Release) {
+			majorVersion, _ = strconv.Atoi(strings.Split(o.Distro.Release, ".")[0])
 		} else {
 			return fmt.Errorf(
-				"Not implemented yet. family: %s, release: %s",
-				o.Family, o.Release)
+				"Not implemented yet: %s", o.Distro)
 		}
 
 		var packName = ""
@@ -171,26 +156,13 @@ func (o *redhat) installYumChangelog() error {
 }
 
 func (o *redhat) checkRequiredPackagesInstalled() error {
-	if config.Conf.UseYumPluginSecurity {
-		// check if yum-plugin-security is installed.
-		// Amazon Linux, REHL can execute 'yum updateinfo --security updates' without yum-plugin-security
-		if o.Family == "centos" {
-			cmd := "rpm -q yum-plugin-security"
-			if r := o.exec(cmd, noSudo); !r.isSuccess() {
-				msg := "yum-plugin-security is not installed"
-				o.log.Errorf(msg)
-				return fmt.Errorf(msg)
-			}
-		}
-		return nil
-	}
 
-	if o.Family == "centos" {
+	if o.Distro.Family == "centos" {
 		var majorVersion int
-		if 0 < len(o.Release) {
-			majorVersion, _ = strconv.Atoi(strings.Split(o.Release, ".")[0])
+		if 0 < len(o.Distro.Release) {
+			majorVersion, _ = strconv.Atoi(strings.Split(o.Distro.Release, ".")[0])
 		} else {
-			msg := fmt.Sprintf("Not implemented yet. family: %s, release: %s", o.Family, o.Release)
+			msg := fmt.Sprintf("Not implemented yet: %s", o.Distro)
 			o.log.Errorf(msg)
 			return fmt.Errorf(msg)
 		}
@@ -268,7 +240,7 @@ func (o *redhat) parseScannedPackagesLine(line string) (models.PackageInfo, erro
 }
 
 func (o *redhat) scanUnsecurePackages() ([]CvePacksInfo, error) {
-	if o.Family != "centos" || config.Conf.UseYumPluginSecurity {
+	if o.Distro.Family != "centos" {
 		// Amazon, RHEL has yum updateinfo as default
 		// yum updateinfo can collenct vendor advisory information.
 		return o.scanUnsecurePackagesUsingYumPluginSecurity()
@@ -278,9 +250,8 @@ func (o *redhat) scanUnsecurePackages() ([]CvePacksInfo, error) {
 	return o.scanUnsecurePackagesUsingYumCheckUpdate()
 }
 
-//TODO return whether already expired.
+// For CentOS
 func (o *redhat) scanUnsecurePackagesUsingYumCheckUpdate() (CvePacksList, error) {
-
 	cmd := "LANG=en_US.UTF-8 yum --color=never check-update"
 	r := o.exec(util.PrependProxyEnv(cmd), sudo)
 	if !r.isSuccess(0, 100) {
@@ -303,30 +274,19 @@ func (o *redhat) scanUnsecurePackagesUsingYumCheckUpdate() (CvePacksList, error)
 
 	// { packageName: changelog-lines }
 	var rpm2changelog map[string]*string
-	if !config.Conf.SSHExternal {
-		allChangelog, err := o.getAllChangelog(packInfoList)
-		if err != nil {
-			o.log.Errorf("Failed to getAllchangelog. err: %s", err)
-			return nil, err
-		}
-		rpm2changelog, err = o.parseAllChangelog(allChangelog)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to parseAllChangelog. err: %s", err)
-		}
+	allChangelog, err := o.getAllChangelog(packInfoList)
+	if err != nil {
+		o.log.Errorf("Failed to getAllchangelog. err: %s", err)
+		return nil, err
+	}
+	rpm2changelog, err = o.parseAllChangelog(allChangelog)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parseAllChangelog. err: %s", err)
 	}
 
 	var results []PackInfoCveIDs
 	for i, packInfo := range packInfoList {
-		changelog := ""
-		if !config.Conf.SSHExternal {
-			changelog = o.getChangelogCVELines(rpm2changelog, packInfo)
-		} else {
-			changelog, err = o.getChangelog(packInfo.Name)
-			if err != nil {
-				o.log.Errorf("Failed to collect CVE IDs. err: %s", err)
-				return nil, err
-			}
-		}
+		changelog := o.getChangelogCVELines(rpm2changelog, packInfo)
 
 		// Collect unique set of CVE-ID in each changelog
 		uniqueCveIDMap := make(map[string]bool)
@@ -421,7 +381,9 @@ func (o *redhat) parseYumCheckUpdateLines(stdout string) (results models.Package
 			continue
 		}
 		if needToParse {
-			if strings.HasPrefix(line, "Obsoleting") {
+			if strings.HasPrefix(line, "Obsoleting") ||
+				strings.HasPrefix(line, "Security:") {
+				// see https://github.com/future-architect/vuls/issues/165
 				continue
 			}
 			candidate, err := o.parseYumCheckUpdateLine(line)
@@ -470,34 +432,17 @@ func (o *redhat) parseYumCheckUpdateLine(line string) (models.PackageInfo, error
 	}, nil
 }
 
-func (o *redhat) getChangelog(packageNames string) (stdout string, err error) {
-	command := ""
-	if o.ServerInfo.User == "root" {
-		command = "echo N | "
-	}
-	if 0 < len(config.Conf.HTTPProxy) {
-		command += util.ProxyEnv()
-	}
-
-	// yum update --changelog doesn't have --color option.
-	command += fmt.Sprintf(" yum update --changelog %s | grep CVE", packageNames)
-
-	r := o.exec(command, sudo)
-	if !r.isSuccess(0, 1) {
-		return "", fmt.Errorf("Failed to SSH: %s", r)
-	}
-	return r.Stdout, nil
-}
-
 func (o *redhat) mkPstring() *string {
 	str := ""
 	return &str
 }
 
 func (o *redhat) regexpReplace(src string, pat string, rep string) string {
-	r := regexp.MustCompile(pat)
-	return r.ReplaceAllString(src, rep)
+	re := regexp.MustCompile(pat)
+	return re.ReplaceAllString(src, rep)
 }
+
+var changeLogCVEPattern = regexp.MustCompile(`CVE-[0-9]+-[0-9]+`)
 
 func (o *redhat) getChangelogCVELines(rpm2changelog map[string]*string, packInfo models.PackageInfo) string {
 	rpm := fmt.Sprintf("%s-%s-%s", packInfo.Name, packInfo.NewVersion, packInfo.NewRelease)
@@ -505,8 +450,7 @@ func (o *redhat) getChangelogCVELines(rpm2changelog map[string]*string, packInfo
 	if rpm2changelog[rpm] != nil {
 		lines := strings.Split(*rpm2changelog[rpm], "\n")
 		for _, line := range lines {
-			match, _ := regexp.MatchString("CVE-[0-9]+-[0-9]+", line)
-			if match {
+			if changeLogCVEPattern.MatchString(line) {
 				retLine += fmt.Sprintf("%s\n", line)
 			}
 		}
@@ -516,12 +460,10 @@ func (o *redhat) getChangelogCVELines(rpm2changelog map[string]*string, packInfo
 
 func (o *redhat) parseAllChangelog(allChangelog string) (map[string]*string, error) {
 	var majorVersion int
-	if 0 < len(o.Release) && o.Family == "centos" {
-		majorVersion, _ = strconv.Atoi(strings.Split(o.Release, ".")[0])
+	if 0 < len(o.Distro.Release) && o.Distro.Family == "centos" {
+		majorVersion, _ = strconv.Atoi(strings.Split(o.Distro.Release, ".")[0])
 	} else {
-		return nil, fmt.Errorf(
-			"Not implemented yet. family: %s, release: %s",
-			o.Family, o.Release)
+		return nil, fmt.Errorf("Not implemented yet: %s", o.getDistro())
 	}
 
 	orglines := strings.Split(allChangelog, "\n")
@@ -534,7 +476,7 @@ func (o *redhat) parseAllChangelog(allChangelog string) (map[string]*string, err
 			/* for CentOS5 (yum-util < 1.1.20) */
 			prev = false
 			now = false
-			if i > 0 {
+			if 0 < i {
 				prev, err = o.isRpmPackageNameLine(orglines[i-1])
 				if err != nil {
 					return nil, err
@@ -584,8 +526,7 @@ func (o *redhat) parseAllChangelog(allChangelog string) (map[string]*string, err
 				rpm2changelog[rpm] = pNewString
 			}
 		} else {
-			stop, _ := regexp.MatchString("^Dependencies Resolved", line)
-			if stop {
+			if strings.HasPrefix(line, "Dependencies Resolved") {
 				return rpm2changelog, nil
 			}
 			*writePointer += fmt.Sprintf("%s\n", line)
@@ -594,24 +535,22 @@ func (o *redhat) parseAllChangelog(allChangelog string) (map[string]*string, err
 	return rpm2changelog, nil
 }
 
+// CentOS
 func (o *redhat) getAllChangelog(packInfoList models.PackageInfoList) (stdout string, err error) {
 	packageNames := ""
 	for _, packInfo := range packInfoList {
 		packageNames += fmt.Sprintf("%s ", packInfo.Name)
 	}
 
-	command := ""
-	if o.ServerInfo.User == "root" {
-		command = "echo N | "
-	}
+	command := "echo N | "
 	if 0 < len(config.Conf.HTTPProxy) {
 		command += util.ProxyEnv()
 	}
 
 	// yum update --changelog doesn't have --color option.
-	command += fmt.Sprintf(" yum update --changelog %s", packageNames)
+	command += fmt.Sprintf(" LANG=en_US.UTF-8 yum update --changelog %s", packageNames)
 
-	r := o.ssh(command, sudo)
+	r := o.exec(command, sudo)
 	if !r.isSuccess(0, 1) {
 		return "", fmt.Errorf(
 			"Failed to get changelog. status: %d, stdout: %s, stderr: %s",
@@ -626,9 +565,9 @@ type distroAdvisoryCveIDs struct {
 }
 
 // Scaning unsecure packages using yum-plugin-security.
-//TODO return whether already expired.
+// Amazon, RHEL
 func (o *redhat) scanUnsecurePackagesUsingYumPluginSecurity() (CvePacksList, error) {
-	if o.Family == "centos" {
+	if o.Distro.Family == "centos" {
 		// CentOS has no security channel.
 		// So use yum check-update && parse changelog
 		return CvePacksList{}, fmt.Errorf(
@@ -636,14 +575,14 @@ func (o *redhat) scanUnsecurePackagesUsingYumPluginSecurity() (CvePacksList, err
 	}
 
 	cmd := "yum --color=never repolist"
-	r := o.exec(util.PrependProxyEnv(cmd), sudo)
+	r := o.exec(util.PrependProxyEnv(cmd), o.sudo())
 	if !r.isSuccess() {
 		return nil, fmt.Errorf("Failed to SSH: %s", r)
 	}
 
 	// get advisoryID(RHSA, ALAS) - package name,version
 	cmd = "yum --color=never updateinfo list available --security"
-	r = o.exec(util.PrependProxyEnv(cmd), sudo)
+	r = o.exec(util.PrependProxyEnv(cmd), o.sudo())
 	if !r.isSuccess() {
 		return nil, fmt.Errorf("Failed to SSH: %s", r)
 	}
@@ -652,7 +591,7 @@ func (o *redhat) scanUnsecurePackagesUsingYumPluginSecurity() (CvePacksList, err
 	// get package name, version, rel to be upgrade.
 	//  cmd = "yum check-update --security"
 	cmd = "LANG=en_US.UTF-8 yum --color=never check-update"
-	r = o.exec(util.PrependProxyEnv(cmd), sudo)
+	r = o.exec(util.PrependProxyEnv(cmd), o.sudo())
 	if !r.isSuccess(0, 100) {
 		//returns an exit code of 100 if there are available updates.
 		return nil, fmt.Errorf("Failed to SSH: %s", r)
@@ -680,7 +619,7 @@ func (o *redhat) scanUnsecurePackagesUsingYumPluginSecurity() (CvePacksList, err
 
 	// get advisoryID(RHSA, ALAS) - CVE IDs
 	cmd = "yum --color=never updateinfo --security update"
-	r = o.exec(util.PrependProxyEnv(cmd), sudo)
+	r = o.exec(util.PrependProxyEnv(cmd), o.sudo())
 	if !r.isSuccess() {
 		return nil, fmt.Errorf("Failed to SSH: %s", r)
 	}
@@ -730,6 +669,8 @@ func (o *redhat) scanUnsecurePackagesUsingYumPluginSecurity() (CvePacksList, err
 	return result, nil
 }
 
+var horizontalRulePattern = regexp.MustCompile(`^=+$`)
+
 func (o *redhat) parseYumUpdateinfo(stdout string) (result []distroAdvisoryCveIDs, err error) {
 	sectionState := Outside
 	lines := strings.Split(stdout, "\n")
@@ -747,7 +688,7 @@ func (o *redhat) parseYumUpdateinfo(stdout string) (result []distroAdvisoryCveID
 		line = strings.TrimSpace(line)
 
 		// find the new section pattern
-		if match, _ := o.isHorizontalRule(line); match {
+		if horizontalRulePattern.MatchString(line) {
 
 			// set previous section's result to return-variable
 			if sectionState == Content {
@@ -774,7 +715,7 @@ func (o *redhat) parseYumUpdateinfo(stdout string) (result []distroAdvisoryCveID
 
 		switch sectionState {
 		case Header:
-			switch o.Family {
+			switch o.Distro.Family {
 			case "centos":
 				// CentOS has no security channel.
 				// So use yum check-update && parse changelog
@@ -841,9 +782,8 @@ func (o *redhat) changeSectionState(state int) (newState int) {
 	return newState
 }
 
-func (o *redhat) isHorizontalRule(line string) (bool, error) {
-	return regexp.MatchString("^=+$", line)
-}
+var rpmPackageArchPattern = regexp.MustCompile(
+	`^[^ ]+\.(i386|i486|i586|i686|k6|athlon|x86_64|noarch|ppc|alpha|sparc)$`)
 
 func (o *redhat) isRpmPackageNameLine(line string) (bool, error) {
 	s := strings.TrimPrefix(line, "ChangeLog for: ")
@@ -853,10 +793,8 @@ func (o *redhat) isRpmPackageNameLine(line string) (bool, error) {
 	}
 	for _, s := range ss {
 		s = strings.TrimRight(s, " \r\n")
-		ok, err := regexp.MatchString(
-			`^[^ ]+\.(i386|i486|i586|i686|k6|athlon|x86_64|noarch|ppc|alpha|sparc)$`, s)
-		if !ok {
-			return false, err
+		if !rpmPackageArchPattern.MatchString(s) {
+			return false, nil
 		}
 	}
 	return true, nil
@@ -879,9 +817,10 @@ func (o *redhat) parseYumUpdateinfoHeaderCentOS(line string) (packs []models.Pac
 	return
 }
 
+var yumHeaderPattern = regexp.MustCompile(`(ALAS-.+): (.+) priority package update for (.+)$`)
+
 func (o *redhat) parseYumUpdateinfoHeaderAmazon(line string) (a models.DistroAdvisory, names []string, err error) {
-	re, _ := regexp.Compile(`(ALAS-.+): (.+) priority package update for (.+)$`)
-	result := re.FindStringSubmatch(line)
+	result := yumHeaderPattern.FindStringSubmatch(line)
 	if len(result) == 4 {
 		a.AdvisoryID = result[1]
 		a.Severity = result[2]
@@ -893,31 +832,36 @@ func (o *redhat) parseYumUpdateinfoHeaderAmazon(line string) (a models.DistroAdv
 	return
 }
 
+var yumCveIDPattern = regexp.MustCompile(`(CVE-\d{4}-\d{4,})`)
+
 func (o *redhat) parseYumUpdateinfoLineToGetCveIDs(line string) []string {
-	re, _ := regexp.Compile(`(CVE-\d{4}-\d{4})`)
-	return re.FindAllString(line, -1)
+	return yumCveIDPattern.FindAllString(line, -1)
 }
 
+var yumAdvisoryIDPattern = regexp.MustCompile(`^ *Update ID : (.*)$`)
+
 func (o *redhat) parseYumUpdateinfoToGetAdvisoryID(line string) (advisoryID string, found bool) {
-	re, _ := regexp.Compile(`^ *Update ID : (.*)$`)
-	result := re.FindStringSubmatch(line)
+	result := yumAdvisoryIDPattern.FindStringSubmatch(line)
 	if len(result) != 2 {
 		return "", false
 	}
 	return strings.TrimSpace(result[1]), true
 }
 
+var yumIssuedPattern = regexp.MustCompile(`^\s*Issued : (\d{4}-\d{2}-\d{2})`)
+
 func (o *redhat) parseYumUpdateinfoLineToGetIssued(line string) (date time.Time, found bool) {
-	return o.parseYumUpdateinfoLineToGetDate(line, `^\s*Issued : (\d{4}-\d{2}-\d{2})`)
+	return o.parseYumUpdateinfoLineToGetDate(line, yumIssuedPattern)
 }
+
+var yumUpdatedPattern = regexp.MustCompile(`^\s*Updated : (\d{4}-\d{2}-\d{2})`)
 
 func (o *redhat) parseYumUpdateinfoLineToGetUpdated(line string) (date time.Time, found bool) {
-	return o.parseYumUpdateinfoLineToGetDate(line, `^\s*Updated : (\d{4}-\d{2}-\d{2})`)
+	return o.parseYumUpdateinfoLineToGetDate(line, yumUpdatedPattern)
 }
 
-func (o *redhat) parseYumUpdateinfoLineToGetDate(line, regexpFormat string) (date time.Time, found bool) {
-	re, _ := regexp.Compile(regexpFormat)
-	result := re.FindStringSubmatch(line)
+func (o *redhat) parseYumUpdateinfoLineToGetDate(line string, regexpPattern *regexp.Regexp) (date time.Time, found bool) {
+	result := regexpPattern.FindStringSubmatch(line)
 	if len(result) != 2 {
 		return date, false
 	}
@@ -928,14 +872,16 @@ func (o *redhat) parseYumUpdateinfoLineToGetDate(line, regexpFormat string) (dat
 	return t, true
 }
 
+var yumDescriptionPattern = regexp.MustCompile(`^\s*Description : `)
+
 func (o *redhat) isDescriptionLine(line string) bool {
-	re, _ := regexp.Compile(`^\s*Description : `)
-	return re.MatchString(line)
+	return yumDescriptionPattern.MatchString(line)
 }
 
+var yumSeverityPattern = regexp.MustCompile(`^ *Severity : (.*)$`)
+
 func (o *redhat) parseYumUpdateinfoToGetSeverity(line string) (severity string, found bool) {
-	re, _ := regexp.Compile(`^ *Severity : (.*)$`)
-	result := re.FindStringSubmatch(line)
+	result := yumSeverityPattern.FindStringSubmatch(line)
 	if len(result) != 2 {
 		return "", false
 	}
@@ -1013,4 +959,13 @@ func (o *redhat) parseYumUpdateinfoListAvailable(stdout string) (advisoryIDPacks
 
 func (o *redhat) clone() osTypeInterface {
 	return o
+}
+
+func (o *redhat) sudo() bool {
+	switch o.Distro.Family {
+	case "amazon":
+		return false
+	default:
+		return true
+	}
 }

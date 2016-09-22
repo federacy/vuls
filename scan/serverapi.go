@@ -1,3 +1,20 @@
+/* Vuls - Vulnerability Scanner
+Copyright (C) 2016  Future Architect, Inc. Japan.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 package scan
 
 import (
@@ -5,6 +22,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/future-architect/vuls/cache"
 	"github.com/future-architect/vuls/config"
 	"github.com/future-architect/vuls/models"
 	cve "github.com/kotakanbe/go-cve-dictionary/models"
@@ -20,9 +38,11 @@ type osTypeInterface interface {
 	setServerInfo(config.ServerInfo)
 	getServerInfo() config.ServerInfo
 
-	setDistributionInfo(string, string)
-	getDistributionInfo() string
+	setDistro(string, string)
+	getDistro() config.Distro
+	//  getFamily() string
 
+	checkIfSudoNoPasswd() error
 	detectPlatform() error
 	getPlatform() models.Platform
 
@@ -133,14 +153,8 @@ func detectOS(c config.ServerInfo) (osType osTypeInterface) {
 	return
 }
 
-// InitServers detect the kind of OS distribution of target servers
-func InitServers(localLogger *logrus.Entry) {
-	Log = localLogger
-	servers = detectServerOSes()
-
-	containers := detectContainerOSes()
-	servers = append(servers, containers...)
-
+// PrintSSHableServerNames print SSH-able servernames
+func PrintSSHableServerNames() {
 	Log.Info("SSH-able servers are below...")
 	for _, s := range servers {
 		if s.getServerInfo().IsContainer() {
@@ -153,6 +167,23 @@ func InitServers(localLogger *logrus.Entry) {
 		}
 	}
 	fmt.Printf("\n")
+}
+
+// InitServers detect the kind of OS distribution of target servers
+func InitServers(localLogger *logrus.Entry) error {
+	Log = localLogger
+	servers = detectServerOSes()
+	if len(servers) == 0 {
+		return fmt.Errorf("No scannable servers")
+	}
+
+	containers := detectContainerOSes()
+	if config.Conf.ContainersOnly {
+		servers = containers
+	} else {
+		servers = append(servers, containers...)
+	}
+	return nil
 }
 
 func detectServerOSes() (sshAbleOses []osTypeInterface) {
@@ -187,7 +218,7 @@ func detectServerOSes() (sshAbleOses []osTypeInterface) {
 				Log.Infof("(%d/%d) Detected: %s: %s",
 					i+1, len(config.Conf.Servers),
 					res.getServerInfo().ServerName,
-					res.getDistributionInfo())
+					res.getDistro())
 			}
 		case <-timeout:
 			msg := "Timed out while detecting servers"
@@ -226,7 +257,7 @@ func detectContainerOSes() (actives []osTypeInterface) {
 			defer func() {
 				if p := recover(); p != nil {
 					Log.Debugf("Panic: %s on %s",
-						p, s.getServerInfo().ServerName)
+						p, s.getServerInfo().GetServerName())
 				}
 			}()
 			osTypesChan <- detectContainerOSesOnServer(s)
@@ -246,7 +277,7 @@ func detectContainerOSes() (actives []osTypeInterface) {
 				}
 				oses = append(oses, res...)
 				Log.Infof("Detected: %s@%s: %s",
-					sinfo.Container.Name, sinfo.ServerName, osi.getDistributionInfo())
+					sinfo.Container.Name, sinfo.ServerName, osi.getDistro())
 			}
 		case <-timeout:
 			msg := "Timed out while detecting containers"
@@ -346,6 +377,19 @@ func detectContainerOSesOnServer(containerHost osTypeInterface) (oses []osTypeIn
 	return oses
 }
 
+// CheckIfSudoNoPasswd checks whether vuls can sudo with nopassword via SSH
+func CheckIfSudoNoPasswd(localLogger *logrus.Entry) error {
+	timeoutSec := 15
+	errs := parallelSSHExec(func(o osTypeInterface) error {
+		return o.checkIfSudoNoPasswd()
+	}, timeoutSec)
+
+	if 0 < len(errs) {
+		return fmt.Errorf(fmt.Sprintf("%s", errs))
+	}
+	return nil
+}
+
 // DetectPlatforms detects the platform of each servers.
 func DetectPlatforms(localLogger *logrus.Entry) {
 	errs := detectPlatforms()
@@ -402,6 +446,16 @@ func Scan() []error {
 		return errs
 	}
 
+	if err := setupCangelogCache(); err != nil {
+		return []error{err}
+	}
+
+	defer func() {
+		if cache.DB != nil {
+			defer cache.DB.Close()
+		}
+	}()
+
 	Log.Info("Scanning vulnerable OS packages...")
 	if errs := scanPackages(); errs != nil {
 		return errs
@@ -410,6 +464,23 @@ func Scan() []error {
 	Log.Info("Scanning vulnerable software specified in the CPE...")
 	if errs := scanVulnByCpeName(); errs != nil {
 		return errs
+	}
+	return nil
+}
+
+func setupCangelogCache() error {
+	needToSetupCache := false
+	for _, s := range servers {
+		switch s.getDistro().Family {
+		case "ubuntu", "debian":
+			needToSetupCache = true
+			break
+		}
+	}
+	if needToSetupCache {
+		if err := cache.SetupBolt(config.Conf.CacheDBPath, Log); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -117,7 +117,7 @@ func ProxyEnv() string {
 
 // PrependProxyEnv prepends proxy enviroment variable
 func PrependProxyEnv(cmd string) string {
-	if config.Conf.HTTPProxy == "" {
+	if len(config.Conf.HTTPProxy) == 0 {
 		return cmd
 	}
 	return fmt.Sprintf("%s %s", ProxyEnv(), cmd)
@@ -130,3 +130,14 @@ func PrependProxyEnv(cmd string) string {
 //      }
 //      return time.Unix(i, 0), nil
 //  }
+
+// Truncate truncates string to the length
+func Truncate(str string, length int) string {
+	if length < 0 {
+		return str
+	}
+	if length <= len(str) {
+		return str[:length]
+	}
+	return str
+}

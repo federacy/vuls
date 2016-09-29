@@ -40,7 +40,7 @@ func NewCustomLogger(c config.ServerInfo) *logrus.Entry {
 	}
 
 	// File output
-	logDir := "/var/log/vuls"
+	logDir := config.Conf.LogPath
 	if runtime.GOOS == "windows" {
 		logDir = filepath.Join(os.Getenv("APPDATA"), "vuls")
 	}

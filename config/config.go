@@ -30,6 +30,8 @@ var Conf Config
 
 //Config is struct of Configuration
 type Config struct {
+	LogPath string
+
 	Debug    bool
 	DebugSQL bool
 	Lang     string

@@ -23,6 +23,7 @@ import (
 	"runtime"
 
 	"github.com/Sirupsen/logrus"
+	c "github.com/future-architect/vuls/config"
 	"github.com/future-architect/vuls/models"
 	formatter "github.com/kotakanbe/logrus-prefixed-formatter"
 )
@@ -32,7 +33,7 @@ type LogrusWriter struct {
 }
 
 func (w LogrusWriter) Write(scanResults []models.ScanResult) error {
-	path := "/var/log/vuls/report.log"
+	path := c.Conf.LogPath + "/report.log"
 	if runtime.GOOS == "windows" {
 		path = filepath.Join(os.Getenv("APPDATA"), "vuls", "report.log")
 	}

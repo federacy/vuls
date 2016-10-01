@@ -169,6 +169,9 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	// This is probably not 100% correct, but it works.  I don't know
 	// the details of what is going on to be able to assess how
 	// good//bad this is
+	if sudo {
+		cmd = "sudo " + cmd
+	}
 	toExec := ex.Command("bash", "-c", cmd)
 	var stdoutBuf, stderrBuf bytes.Buffer
 	toExec.Stderr = &stderrBuf

@@ -115,7 +115,7 @@ func trim(str string) string {
 }
 
 func (o *debian) checkIfSudoNoPasswd() error {
-	r := o.exec("apt-get -v", sudo)
+	r := o.exec("apt-get -v", noSudo)
 	if !r.isSuccess() {
 		o.log.Errorf("sudo error on %s", r)
 		return fmt.Errorf("Failed to sudo: %s", r)
@@ -303,7 +303,7 @@ func (o *debian) fillCandidateVersion(before models.PackageInfoList) (filled []m
 		names = append(names, p.Name)
 	}
 	cmd := fmt.Sprintf("LANG=en_US.UTF-8 apt-cache policy %s", strings.Join(names, " "))
-	r := o.exec(cmd, sudo)
+	r := o.exec(cmd, noSudo)
 	if !r.isSuccess() {
 		return nil, fmt.Errorf("Failed to SSH: %s.", r)
 	}
@@ -325,7 +325,7 @@ func (o *debian) fillCandidateVersion(before models.PackageInfoList) (filled []m
 
 func (o *debian) GetUpgradablePackNames() (packNames []string, err error) {
 	cmd := util.PrependProxyEnv("LANG=en_US.UTF-8 apt-get upgrade --dry-run")
-	r := o.exec(cmd, sudo)
+	r := o.exec(cmd, noSudo)
 	if r.isSuccess(0, 1) {
 		return o.parseAptGetUpgrade(r.Stdout)
 	}

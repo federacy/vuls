@@ -589,8 +589,8 @@ func (o *debian) parseChangelog(changelog string,
 }
 
 func (o *debian) splitAptCachePolicy(stdout string) map[string]string {
-	//  re := regexp.MustCompile(`(?m:^[^ \t]+:$)`)
-	re := regexp.MustCompile(`(?m:^[^ \t]+:\r\n)`)
+	re := regexp.MustCompile(`(?m:^[^ \t]+:$)`)
+	// re := regexp.MustCompile(`(?m:^[^ \t]+:\r\n)`)
 	ii := re.FindAllStringIndex(stdout, -1)
 	ri := []int{}
 	for i := len(ii) - 1; 0 <= i; i-- {

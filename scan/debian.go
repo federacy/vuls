@@ -26,9 +26,9 @@ import (
 
 	"github.com/future-architect/vuls/cache"
 	"github.com/future-architect/vuls/config"
-	"github.com/future-architect/vuls/cveapi"
 	"github.com/future-architect/vuls/models"
 	"github.com/future-architect/vuls/util"
+	cve "github.com/kotakanbe/go-cve-dictionary/models"
 )
 
 // inherit OsTypeInterface
@@ -489,18 +489,17 @@ func (o *debian) scanPackageCveInfos(unsecurePacks []models.PackageInfo) (cvePac
 	}
 	o.log.Debugf("%d Cves are found. cves: %v", len(cveIDs), cveIDs)
 
-	o.log.Info("Fetching CVE details...")
-	cveDetails, err := cveapi.CveClient.FetchCveDetails(cveIDs)
 	if err != nil {
 		return nil, err
 	}
 	o.log.Info("Done")
 
-	for _, detail := range cveDetails {
+	// Range over the IDs, don't worry about going to remote because fuck it
+	for _, id := range cveIDs {
 		cvePacksList = append(cvePacksList, CvePacksInfo{
-			CveID:     detail.CveID,
-			CveDetail: detail,
-			Packs:     cvePackages[detail.CveID],
+			CveID:     id,
+			CveDetail: cve.CveDetail{},
+			Packs:     cvePackages[id],
 			//  CvssScore: cinfo.CvssScore(conf.Lang),
 		})
 	}

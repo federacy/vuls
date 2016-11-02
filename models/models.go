@@ -36,6 +36,7 @@ type ScanHistory struct {
 
 // ScanResults is slice of ScanResult.
 type ScanResults []ScanResult
+type ScanPackageResults []ScanPackageResult
 
 // Len implement Sort Interface
 func (s ScanResults) Len() int {
@@ -70,6 +71,23 @@ func (s ScanResults) FilterByCvssOver() (filtered ScanResults) {
 	return
 }
 
+type ScanPackageResult struct {
+	ScannedAt time.Time
+
+	ServerName string // TOML Section key
+	//  Hostname    string
+	Family  string
+	Release string
+
+	Container Container
+
+	Platform Platform
+
+	//  Fqdn        string
+	//  NWLinks     []NWLink
+	Packages map[PackageInfo][]string
+}
+
 // ScanResult has the result of scanned CVE information.
 type ScanResult struct {
 	gorm.Model    `json:"-"`
@@ -92,6 +110,26 @@ type ScanResult struct {
 	IgnoredCves []CveInfo
 
 	Optional [][]interface{} `gorm:"-"`
+}
+
+func (r ScanResult) ByPackage() ScanPackageResult {
+	packMap := make(map[PackageInfo][]string)
+	allCVEs := append(append(r.KnownCves, r.UnknownCves...), r.IgnoredCves...)
+	for _, cve := range allCVEs {
+		for _, pack := range cve.Packages {
+			packMap[pack] = append(packMap[pack], cve.CveDetail.CveID)
+		}
+	}
+	return ScanPackageResult{
+		ScannedAt:  r.ScannedAt,
+		ServerName: r.ServerName,
+		Family:     r.Family,
+		Release:    r.Release,
+		Container:  r.Container,
+		Platform:   r.Platform,
+		Packages:   packMap,
+	}
+
 }
 
 // ServerInfo returns server name one line

@@ -85,7 +85,7 @@ type ScanPackageResult struct {
 
 	//  Fqdn        string
 	//  NWLinks     []NWLink
-	Packages map[PackageInfo][]string
+	Packages []PackageInfoCVE
 }
 
 // ScanResult has the result of scanned CVE information.
@@ -120,6 +120,11 @@ func (r ScanResult) ByPackage() ScanPackageResult {
 			packMap[pack] = append(packMap[pack], cve.CveDetail.CveID)
 		}
 	}
+	packs := []PackageInfoCVE{}
+	for pack, cves := range packMap {
+		packs = append(packs, pack.WithCVEs(cves))
+	}
+
 	return ScanPackageResult{
 		ScannedAt:  r.ScannedAt,
 		ServerName: r.ServerName,
@@ -127,7 +132,7 @@ func (r ScanResult) ByPackage() ScanPackageResult {
 		Release:    r.Release,
 		Container:  r.Container,
 		Platform:   r.Platform,
-		Packages:   packMap,
+		Packages:   packs,
 	}
 
 }
@@ -321,6 +326,28 @@ type PackageInfo struct {
 
 	NewVersion string
 	NewRelease string
+}
+
+func (p PackageInfo) WithCVEs(cves []string) PackageInfoCVE {
+	return PackageInfoCVE{
+		Name:       p.Name,
+		Version:    p.Version,
+		Release:    p.Release,
+		NewVersion: p.NewVersion,
+		NewRelease: p.NewRelease,
+		CVEs:       cves,
+	}
+}
+
+type PackageInfoCVE struct {
+	Name    string
+	Version string
+	Release string
+
+	NewVersion string
+	NewRelease string
+
+	CVEs []string
 }
 
 // ToStringCurrentVersion returns package name-version-release

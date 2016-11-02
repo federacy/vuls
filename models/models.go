@@ -36,6 +36,7 @@ type ScanHistory struct {
 
 // ScanResults is slice of ScanResult.
 type ScanResults []ScanResult
+type ScanPackageResults []ScanPackageResult
 
 // Len implement Sort Interface
 func (s ScanResults) Len() int {
@@ -70,6 +71,23 @@ func (s ScanResults) FilterByCvssOver() (filtered ScanResults) {
 	return
 }
 
+type ScanPackageResult struct {
+	ScannedAt time.Time
+
+	ServerName string // TOML Section key
+	//  Hostname    string
+	Family  string
+	Release string
+
+	Container Container
+
+	Platform Platform
+
+	//  Fqdn        string
+	//  NWLinks     []NWLink
+	Packages []PackageInfoCVE
+}
+
 // ScanResult has the result of scanned CVE information.
 type ScanResult struct {
 	gorm.Model    `json:"-"`
@@ -92,6 +110,31 @@ type ScanResult struct {
 	IgnoredCves []CveInfo
 
 	Optional [][]interface{} `gorm:"-"`
+}
+
+func (r ScanResult) ByPackage() ScanPackageResult {
+	packMap := make(map[PackageInfo][]string)
+	allCVEs := append(append(r.KnownCves, r.UnknownCves...), r.IgnoredCves...)
+	for _, cve := range allCVEs {
+		for _, pack := range cve.Packages {
+			packMap[pack] = append(packMap[pack], cve.CveDetail.CveID)
+		}
+	}
+	packs := []PackageInfoCVE{}
+	for pack, cves := range packMap {
+		packs = append(packs, pack.WithCVEs(cves))
+	}
+
+	return ScanPackageResult{
+		ScannedAt:  r.ScannedAt,
+		ServerName: r.ServerName,
+		Family:     r.Family,
+		Release:    r.Release,
+		Container:  r.Container,
+		Platform:   r.Platform,
+		Packages:   packs,
+	}
+
 }
 
 // ServerInfo returns server name one line
@@ -283,6 +326,28 @@ type PackageInfo struct {
 
 	NewVersion string
 	NewRelease string
+}
+
+func (p PackageInfo) WithCVEs(cves []string) PackageInfoCVE {
+	return PackageInfoCVE{
+		Name:       p.Name,
+		Version:    p.Version,
+		Release:    p.Release,
+		NewVersion: p.NewVersion,
+		NewRelease: p.NewRelease,
+		CVEs:       cves,
+	}
+}
+
+type PackageInfoCVE struct {
+	Name    string
+	Version string
+	Release string
+
+	NewVersion string
+	NewRelease string
+
+	CVEs []string
 }
 
 // ToStringCurrentVersion returns package name-version-release

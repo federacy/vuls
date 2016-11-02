@@ -20,7 +20,6 @@ package scan
 import (
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -28,6 +27,7 @@ import (
 	"github.com/future-architect/vuls/config"
 	"github.com/future-architect/vuls/cveapi"
 	"github.com/future-architect/vuls/models"
+	cve "github.com/kotakanbe/go-cve-dictionary/models"
 )
 
 type base struct {
@@ -239,7 +239,7 @@ func (l *base) convertToModel() (models.ScanResult, error) {
 		for _, icve := range l.getServerInfo().IgnoreCves {
 			if icve == p.CveDetail.CveID {
 				ignoredCves = append(ignoredCves, models.CveInfo{
-					CveDetail:        p.CveDetail,
+					CveDetail:        cve.CveDetail{CveID: p.CveID},
 					Packages:         p.Packs,
 					DistroAdvisories: p.DistroAdvisories,
 				})
@@ -254,7 +254,7 @@ func (l *base) convertToModel() (models.ScanResult, error) {
 		// unscoredCves
 		if p.CveDetail.CvssScore(config.Conf.Lang) <= 0 {
 			unscoredCves = append(unscoredCves, models.CveInfo{
-				CveDetail:        p.CveDetail,
+				CveDetail:        cve.CveDetail{CveID: p.CveID},
 				Packages:         p.Packs,
 				DistroAdvisories: p.DistroAdvisories,
 			})
@@ -269,7 +269,7 @@ func (l *base) convertToModel() (models.ScanResult, error) {
 
 		// scoredCves
 		cve := models.CveInfo{
-			CveDetail:        p.CveDetail,
+			CveDetail:        cve.CveDetail{CveID: p.CveID},
 			Packages:         p.Packs,
 			DistroAdvisories: p.DistroAdvisories,
 			CpeNames:         cpenames,
@@ -281,10 +281,6 @@ func (l *base) convertToModel() (models.ScanResult, error) {
 		ContainerID: l.ServerInfo.Container.ContainerID,
 		Name:        l.ServerInfo.Container.Name,
 	}
-
-	sort.Sort(scoredCves)
-	sort.Sort(unscoredCves)
-	sort.Sort(ignoredCves)
 
 	return models.ScanResult{
 		ServerName:  l.ServerInfo.ServerName,

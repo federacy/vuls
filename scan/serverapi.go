@@ -567,13 +567,13 @@ func scanVulnByCpeName() []error {
 }
 
 // GetScanResults returns Scan Resutls
-func GetScanResults() (results models.ScanResults, err error) {
+func GetScanResults() (results models.ScanPackageResults, err error) {
 	for _, s := range servers {
 		r, err := s.convertToModel()
 		if err != nil {
 			return results, fmt.Errorf("Failed converting to model: %s", err)
 		}
-		results = append(results, r)
+		results = append(results, r.ByPackage())
 	}
 	return
 }

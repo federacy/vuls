@@ -430,15 +430,17 @@ func (p *ScanCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 		return subcommands.ExitFailure
 	}
 
-	Log.Info("Reporting...")
-	filtered := scanResults.FilterByCvssOver()
-	//Log.Info("FILTERED RESULTS: ", filtered)
-	for _, w := range reports {
-		if err := w.Write(filtered); err != nil {
-			Log.Fatalf("Failed to report, err: %s", err)
-			return subcommands.ExitFailure
+	/*
+		Log.Info("Reporting...")
+		filtered := scanResults.FilterByCvssOver()
+		//Log.Info("FILTERED RESULTS: ", filtered)
+		for _, w := range reports {
+			if err := w.Write(filtered); err != nil {
+				Log.Fatalf("Failed to report, err: %s", err)
+				return subcommands.ExitFailure
+			}
 		}
-	}
+	*/
 
 	return subcommands.ExitSuccess
 }

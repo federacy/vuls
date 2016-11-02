@@ -51,6 +51,7 @@ type Config struct {
 
 	HTTPProxy   string `valid:"url"`
 	ResultsDir  string
+	CveDBType   string
 	CveDBPath   string
 	CacheDBPath string
 
@@ -77,10 +78,23 @@ func (c Config) Validate() bool {
 		}
 	}
 
-	if len(c.CveDBPath) != 0 {
-		if ok, _ := valid.IsFilePath(c.CveDBPath); !ok {
-			errs = append(errs, fmt.Errorf(
-				"SQLite3 DB(Cve Dictionary) path must be a *Absolute* file path. -cve-dictionary-dbpath: %s", c.CveDBPath))
+	// If no valid DB type is set, default to sqlite3
+	if c.CveDBType == "" {
+		c.CveDBType = "sqlite3"
+	}
+
+	if c.CveDBType != "sqlite3" && c.CveDBType != "mysql" {
+		errs = append(errs, fmt.Errorf(
+			"CVE DB type must be either 'sqlite3' or 'mysql'.  -cve-dictionary-dbtype: %s", c.CveDBType))
+	}
+
+
+	if c.CveDBType == "sqlite3" {
+		if len(c.CveDBPath) != 0 {
+			if ok, _ := valid.IsFilePath(c.CveDBPath); !ok {
+				errs = append(errs, fmt.Errorf(
+					"SQLite3 DB(Cve Dictionary) path must be a *Absolute* file path. -cve-dictionary-dbpath: %s", c.CveDBPath))
+			}
 		}
 	}
 
@@ -190,7 +204,6 @@ type SlackConf struct {
 
 // Validate validates configuration
 func (c *SlackConf) Validate() (errs []error) {
-
 	if !c.UseThisTime {
 		return
 	}
@@ -230,10 +243,13 @@ type ServerInfo struct {
 	KeyPath     string
 	KeyPassword string
 
-	CpeNames []string
+	CpeNames               []string
+	DependencyCheckXMLPath string
 
 	// Container Names or IDs
 	Containers []string
+
+	IgnoreCves []string
 
 	// Optional key-value set that will be outputted to JSON
 	Optional [][]interface{}

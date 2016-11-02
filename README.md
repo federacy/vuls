@@ -52,6 +52,8 @@ Vuls is a tool created to solve the problems listed above. It has the following 
     - Support software registered in CPE
 - Agentless architecture
     - User is required to only setup one machine that is connected to other target servers via SSH
+- Nondestructive testing
+- Pre-authorization is not necessary　before scanning on AWS
 - Auto generation of configuration file template
     - Auto detection of servers set using CIDR, generate configuration file template
 - Email and Slack notification is possible (supports Japanese language) 
@@ -128,17 +130,17 @@ And also, SUDO with password is not supported for security reasons. So you have 
 
 Vuls requires the following packages.
 
-- SQLite3
-- git v2
+- SQLite3 or MySQL
+- git
 - gcc
-- go v1.6
+- go v1.7.1 or later
     - https://golang.org/doc/install
 
 ```bash
 $ ssh ec2-user@52.100.100.100  -i ~/.ssh/private.pem
 $ sudo yum -y install sqlite git gcc
-$ wget https://storage.googleapis.com/golang/go1.6.linux-amd64.tar.gz
-$ sudo tar -C /usr/local -xzf go1.6.linux-amd64.tar.gz
+$ wget https://storage.googleapis.com/golang/go1.7.1.linux-amd64.tar.gz
+$ sudo tar -C /usr/local -xzf go1.7.1.linux-amd64.tar.gz
 $ mkdir $HOME/go
 ```
 Add these lines into /etc/profile.d/goenv.sh
@@ -156,18 +158,18 @@ $ source /etc/profile.d/goenv.sh
 
 ## Step4. Deploy [go-cve-dictionary](https://github.com/kotakanbe/go-cve-dictionary)
 
-go get
-
 ```bash
 $ sudo mkdir /var/log/vuls
 $ sudo chown ec2-user /var/log/vuls
 $ sudo chmod 700 /var/log/vuls
-$ go get github.com/kotakanbe/go-cve-dictionary
+$
+$ mkdir -p $GOPATH/src/github.com/kotakanbe
+$ cd $GOPATH/src/github.com/kotakanbe
+$ git clone https://github.com/kotakanbe/go-cve-dictionary.git
+$ cd go-cve-dictionary
+$ make install
 ```
-
-If an error occurred while go get, check the following points.
-- Update Git
-- try [deploying with glide](https://github.com/future-architect/vuls/blob/master/README.md#deploy-with-glide).
+The binary was built under `$GOPARH/bin`
 
 Fetch vulnerability data from NVD.  
 It takes about 10 minutes (on AWS).  
@@ -183,14 +185,14 @@ $ ls -alh cve.sqlite3
 
 Launch a new terminal and SSH to the ec2 instance.
 
-go get
 ```
-$ go get github.com/future-architect/vuls
+$ mkdir -p $GOPATH/src/github.com/future-architect
+$ cd $GOPATH/src/github.com/future-architect
+$ git clone https://github.com/future-architect/vuls.git
+$ cd vuls
+$ make install
 ```
-
-If an error occurred while go get, check the following points.
-- Update Git
-- try [deploying with glide](https://github.com/future-architect/vuls/blob/master/README.md#deploy-with-glide).
+The binary was built under `$GOPARH/bin`
 
 ## Step6. Config
 
@@ -220,7 +222,7 @@ see [Usage: Prepare](https://github.com/future-architect/vuls#usage-prepare)
 ## Step8. Start Scanning
 
 ```
-$ vuls scan -cve-dictionary-dbpath=$PWD/cve.sqlite3
+$ vuls scan -cve-dictionary-dbpath=$PWD/cve.sqlite3 -report-json
 INFO[0000] Start scanning (config: /home/ec2-user/config.toml)
 INFO[0000] Start scanning
 INFO[0000] config: /home/ec2-user/config.toml
@@ -247,7 +249,7 @@ Summary         Unspecified vulnerability in the Java SE and Java SE Embedded co
 NVD             https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2016-0494
 MITRE           https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-0494
 CVE Details     http://www.cvedetails.com/cve/CVE-2016-0494
-CVSS Claculator https://nvd.nist.gov/cvss/v2-calculator?name=CVE-2016-0494&vector=(AV:N/AC:L/Au:N/C:C/I:C/A:C)
+CVSS Calculator https://nvd.nist.gov/cvss/v2-calculator?name=CVE-2016-0494&vector=(AV:N/AC:L/Au:N/C:C/I:C/A:C)
 RHEL-CVE        https://access.redhat.com/security/cve/CVE-2016-0494
 ALAS-2016-643   https://alas.aws.amazon.com/ALAS-2016-643.html
 Package/CPE     java-1.7.0-openjdk-1.7.0.91-2.6.2.2.63.amzn1 -> java-1.7.0-openjdk-1:1.7.0.95-2.6.4.0.65.amzn1
@@ -282,7 +284,7 @@ see https://github.com/future-architect/vuls/tree/master/setup/docker
 ![Vuls-Architecture](img/vuls-architecture.png)
 
 ## [go-cve-dictinary](https://github.com/kotakanbe/go-cve-dictionary)  
-- Fetch vulnerability information from NVD and JVN(Japanese), then insert into SQLite3.
+- Fetch vulnerability information from NVD and JVN(Japanese), then insert into SQLite3 or MySQL.
 
 ## Scanning Flow
 ![Vuls-Scan-Flow](img/vuls-scan-flow.png)
@@ -373,7 +375,7 @@ notifyUsers  = ["@username"]
 
 [mail]
 smtpAddr      = "smtp.gmail.com"
-smtpPort      = "465"
+smtpPort      = "587"
 user          = "username"
 password      = "password"
 from          = "from@address.com"
@@ -389,6 +391,7 @@ subjectPrefix = "[vuls]"
 #  "cpe:/a:rubyonrails:ruby_on_rails:4.2.1",
 #]
 #containers = ["${running}"]
+#ignoreCves = ["CVE-2016-6313"]
 #optional = [
 #    ["key", "value"],
 #]
@@ -404,6 +407,7 @@ host         = "172.31.4.82"
 #  "cpe:/a:rubyonrails:ruby_on_rails:4.2.1",
 #]
 #containers = ["${running}"]
+#ignoreCves = ["CVE-2016-6313"]
 #optional = [
 #    ["key", "value"],
 #]
@@ -426,7 +430,7 @@ You can customize your configuration using this template.
     notifyUsers  = ["@username"]
     ```
 
-    - hookURL : Incomming webhook's URL  
+    - hookURL : Incoming webhook's URL  
     - channel : channel name.  
     If you set `${servername}` to channel, the report will be sent to each channel.  
     In the following example, the report will be sent to the `#server1` and `#server2`.  
@@ -457,7 +461,7 @@ You can customize your configuration using this template.
     ```
     [mail]
     smtpAddr      = "smtp.gmail.com"
-    smtpPort      = "465"
+    smtpPort      = "587"
     user          = "username"
     password      = "password"
     from          = "from@address.com"
@@ -476,6 +480,7 @@ You can customize your configuration using this template.
     #  "cpe:/a:rubyonrails:ruby_on_rails:4.2.1",
     #]
     #containers = ["${running}"]
+    #ignoreCves = ["CVE-2016-6313"]
     #optional = [
     #    ["key", "value"],
     #]
@@ -495,6 +500,7 @@ You can customize your configuration using this template.
     #  "cpe:/a:rubyonrails:ruby_on_rails:4.2.1",
     #]
     #containers = ["${running}"]
+    #ignoreCves = ["CVE-2016-6314"]
     #optional = [
     #    ["key", "value"],
     #]
@@ -508,6 +514,7 @@ You can customize your configuration using this template.
     - keyPath: SSH private key path
     - cpeNames: see [Usage: Scan vulnerability of non-OS package](https://github.com/future-architect/vuls#usage-scan-vulnerability-of-non-os-package)
     - containers: see [Usage: Scan Docker containers](https://github.com/future-architect/vuls#usage-scan-docker-containers)
+    - ignoreCves: CVE IDs that will not be reported. But output to JSON file.
     - optional: Add additional information to JSON report.
 
     Vuls supports two types of SSH. One is native go implementation. The other is external SSH command. For details, see [-ssh-external option](https://github.com/future-architect/vuls#-ssh-external-option)
@@ -576,17 +583,22 @@ Prepare subcommand installs required packages on each server.
 
 ```
 $ vuls prepare -help
-prepare
-                        [-config=/path/to/config.toml] [-debug]
+prepare:
+        prepare
+                        [-config=/path/to/config.toml]
                         [-ask-key-password]
-                        [SERVER]...
+                        [-debug]
+                        [-ssh-external]
 
+                        [SERVER]...
   -ask-key-password
         Ask ssh privatekey password before scanning
   -config string
         /path/to/toml (default "$PWD/config.toml")
   -debug
         debug mode
+  -ssh-external
+        Use external ssh command. Default: Use the Go native implementation
 ```
 
 ----
@@ -601,7 +613,8 @@ scan:
                 [-lang=en|ja]
                 [-config=/path/to/config.toml]
                 [-results-dir=/path/to/results]
-                [-cve-dictionary-dbpath=/path/to/cve.sqlite3]
+                [-cve-dictionary-dbtype=sqlite3|mysql]
+                [-cve-dictionary-dbpath=/path/to/cve.sqlite3 or mysql connection string]
                 [-cve-dictionary-url=http://127.0.0.1:1323]
                 [-cache-dbpath=/path/to/cache.db]
                 [-cvss-over=7]
@@ -648,7 +661,9 @@ scan:
   -containers-only
         Scan concontainers Only. Default: Scan both of hosts and containers
   -cve-dictionary-dbpath string
-        /path/to/sqlite3 (For get cve detail from cve.sqlite3)        
+        /path/to/sqlite3 (For get cve detail from cve.sqlite3)
+  -cve-dictionary-dbtype string
+        DB type for fetching CVE dictionary (sqlite3 or mysql) (default "sqlite3")
   -cve-dictionary-url string
         http://CVE.Dictionary (default "http://127.0.0.1:1323")
   -cvss-over float
@@ -683,11 +698,11 @@ scan:
 
 Vuls supports different types of SSH.  
 
-By Defaut, using a native Go implementation from crypto/ssh.   
+By Default, using a native Go implementation from crypto/ssh.   
 This is useful in situations where you may not have access to traditional UNIX tools.
 
 To use external ssh command, specify this option.   
-This is useful If you want to use ProxyCommand or chiper algorithm of SSH that is not supported by native go implementation.  
+This is useful If you want to use ProxyCommand or cipher algorithm of SSH that is not supported by native go implementation.  
 Don't forget to add below line to /etc/sudoers on the target servers. (username: vuls)
 ```
 Defaults:vuls !requiretty
@@ -704,7 +719,7 @@ Defaults:vuls !requiretty
 ## -report-json , -report-text option
 
 At the end of the scan, scan results will be available in the `$PWD/result/current/` directory.  
-`all.(json|txt)` includes the scan results of all servres and `servername.(json|txt)` includes the scan result of the server.
+`all.(json|txt)` includes the scan results of all servers and `servername.(json|txt)` includes the scan result of the server.
 
 ## Example: Scan all servers defined in config file
 ```
@@ -716,7 +731,7 @@ $ vuls scan \
       -cve-dictionary-dbpath=$PWD/cve.sqlite3
 ```
 With this sample command, it will ..
-- Ask SSH key passsword before scanning
+- Ask SSH key password before scanning
 - Scan all servers defined in config file
 - Send scan results to slack and email
 - Only Report CVEs that CVSS score is over 7
@@ -780,6 +795,43 @@ $ vuls scan \
       -azure-container=vuls
 ```
 
+## Example: IgnoreCves 
+
+Define ignoreCves in config if you don't want to report(slack, mail, text...) specific CVE IDs. But these ignoreCves will be output to JSON file like below.
+
+- config.toml
+```toml
+[default]
+ignoreCves = ["CVE-2016-6313"]
+
+[servers.bsd]
+host     = "192.168.11.11"
+user     = "kanbe"
+ignoreCves = ["CVE-2016-6314"]
+```
+
+- bsd.json
+```json
+[
+  {
+    "ServerName": "bsd",
+    "Family": "FreeBSD",
+    "Release": "10.3-RELEASE",
+    "IgnoredCves" : [
+      "CveDetail" : {
+        "CVE-2016-6313",
+        ...
+      },
+      "CveDetail" : {
+        "CVE-2016-6314",
+        ...
+      }
+    ]
+  }
+]
+```
+
+
 ## Example: Add optional key-value pairs to JSON
 
 Optional key-value can be outputted to JSON.  
@@ -820,9 +872,17 @@ optional = [
 ]
 ```
 
+## Example: Use MySQL as a DB storage back-end
+
+```
+$ vuls scan \
+      -cve-dictionary-dbtype=mysql \
+      -cve-dictionary-dbpath="user:pass@tcp(localhost:3306)/dbname?parseTime=true"
+```
+
 ----
 
-# Usage: Scan vulnerability of non-OS package
+# Usage: Scan vulnerabilites of non-OS packages
 
 It is possible to detect vulnerabilities in non-OS packages, such as something you compiled by yourself, language libraries and frameworks, that have been registered in the [CPE](https://nvd.nist.gov/cpe.cfm).
 
@@ -831,10 +891,10 @@ It is possible to detect vulnerabilities in non-OS packages, such as something y
     **Check CPE Naming Format: 2.2**
 
     - [go-cpe-dictionary](https://github.com/kotakanbe/go-cpe-dictionary) is a good choice for geeks.   
-    You can search a CPE name by the application name incremenally.
+    You can search a CPE name by the application name incrementally.
 
 - Configuration  
-To detect the vulnerbility of Ruby on Rails v4.2.1, cpeNames needs to be set in the servers section.
+To detect the vulnerability of Ruby on Rails v4.2.1, cpeNames needs to be set in the servers section.
     ```
     [servers]
 
@@ -846,10 +906,34 @@ To detect the vulnerbility of Ruby on Rails v4.2.1, cpeNames needs to be set in 
       "cpe:/a:rubyonrails:ruby_on_rails:4.2.1",
     ]
     ```
+
+# Usage: Integrate with OWASP Dependency Check to Automatic update when the libraries are updated (Experimental)
+[OWASP Dependency check](https://www.owasp.org/index.php/OWASP_Dependency_Check) is a utility that identifies project dependencies and checks if there are any known, publicly disclosed, vulnerabilities.
+
+Benefit of integrating Vuls And OWASP Dependency Check is below.
+- Automatic Update of Vuls config when the libraries are updated.
+- Reporting by Email or Slack by using Vuls.
+- Reporting in Japanese
+  - OWASP Dependency Check supports only English
+
+How to integrate Vuls with OWASP Dependency Check
+- Execute OWASP Dependency Check with --format=XML option.
+- Define the xml file path of dependency check in config.toml.
+
+    ```
+    [servers]
+
+    [servers.172-31-4-82]
+    host         = "172.31.4.82"
+    user        = "ec2-user"
+    keyPath     = "/home/username/.ssh/id_rsa"
+    dependencyCheckXMLPath = "/tmp/dependency-check-report.xml"
+    ```
+
     
 # Usage: Scan Docker containers
 
-It is common that keep Docker containers runnning without SSHd daemon.  
+It is common that keep Docker containers running without SSHd daemon.  
 see [Docker Blog:Why you don't need to run SSHd in your Docker containers](https://blog.docker.com/2014/06/why-you-dont-need-to-run-sshd-in-docker/)
 
 Vuls scans Docker containers via `docker exec` instead of SSH.  
@@ -901,14 +985,14 @@ tui:
 
 ```
 
-Key binding is bellow.
+Key binding is below.
 
 | key | |
 |:-----------------|:-------|:------|
 | TAB | move cursor among the panes |
 | Arrow up/down | move cursor to up/down |
-| Ctrl+j, Ctrl+k | move cursor to up/donw |
-| Ctrl+u, Ctrl+d | page up/donw |
+| Ctrl+j, Ctrl+k | move cursor to up/down |
+| Ctrl+u, Ctrl+d | page up/down |
 
 For details, see https://github.com/future-architect/vuls/blob/master/report/tui.go
 
@@ -954,81 +1038,30 @@ $ vuls scan -cve-dictionary-url=http://192.168.0.1:1323
 
 # Usage: Update NVD Data
 
-```
-$ go-cve-dictionary fetchnvd -h
-fetchnvd:
-        fetchnvd
-                [-last2y]
-                [-dbpath=/path/to/cve.sqlite3]
-                [-debug]
-                [-debug-sql]
+see [go-cve-dictionary#usage-fetch-nvd-data](https://github.com/kotakanbe/go-cve-dictionary#usage-fetch-nvd-data)
 
-  -dbpath string
-        /path/to/sqlite3 (default "$PWD/cve.sqlite3")
-  -debug
-        debug mode
-  -debug-sql
-        SQL debug mode
-  -last2y
-        Refresh NVD data in the last two years.
-```
-
-- Fetch data of the entire period
-
-```
-$ go-cve-dictionary fetchnvd -entire
-```
-
-- Fetch data in the last 2 years
-
-```
-$ go-cve-dictionary fetchnvd -last2y
-```
-
-----
-
-# Deploy With Glide
-
-If an error occurred while go get, try deploying with glide.  
-- Install [Glide](https://github.com/Masterminds/glide)
-- Deploy go-cve-dictionary
-```
-$ go get -d github.com/kotakanbe/go-cve-dictionary
-$ cd $GOPATH/src/github.com/kotakanbe/go-cve-dictionary
-$ glide install
-$ go install
-```
-- Deploy vuls
-```
-$ go get -d github.com/future-architect/vuls
-$ cd $GOPATH/src/github.com/future-architect/vuls
-$ glide install
-$ go install
-```
-- The binaries are created under $GOPARH/bin
 
 ----
 
 # Update Vuls With Glide
 
 - Update go-cve-dictionary  
-If the DB schema was changed, please specify new SQLite3 DB file.
+If the DB schema was changed, please specify new SQLite3 or MySQL DB file.
 ```
 $ cd $GOPATH/src/github.com/kotakanbe/go-cve-dictionary
 $ git pull
-$ glide install
-$ go install
+$ mv vendor /tmp/foo
+$ make install
 ```
 
 - Update vuls
 ```
 $ cd $GOPATH/src/github.com/future-architect/vuls
 $ git pull
-$ glide install
-$ go install
+$ mv vendor /tmp/bar
+$ make install
 ```
-
-Binary Files are created under $GOPARH/bin
+Binary file was built under $GOPARH/bin
 
 ---
 
@@ -1044,7 +1077,7 @@ If your system is behind HTTP proxy, you have to specify --http-proxy option.
 - How to Daemonize go-cve-dictionary  
 Use Systemd, Upstart or supervisord, daemontools...
 
-- How to Enable Automatic-Update of Vunerability Data.  
+- How to Enable Automatic-Update of Vulnerability Data.  
 Use job scheduler like Cron (with -last2y option).
 
 - How to Enable Automatic-Scan.  
@@ -1119,7 +1152,6 @@ Please see [CHANGELOG](https://github.com/future-architect/vuls/blob/master/CHAN
 
 ----
 
-# Licence
+# License
 
 Please see [LICENSE](https://github.com/future-architect/vuls/blob/master/LICENSE).
-

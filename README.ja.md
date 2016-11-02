@@ -46,6 +46,8 @@ Vulsは上に挙げた手動運用での課題を解決するツールであり�
     - CPEに登録されているソフトウェアが対象
 - エージェントレスアーキテクチャ
     - スキャン対象サーバにSSH接続可能なマシン1台にセットアップするだけで動作
+- 非破壊スキャン(SSHでコマンド発行するだけ)
+- AWSでの脆弱性/侵入テスト事前申請は必要なし
 - 設定ファイルのテンプレート自動生成
     - CIDRを指定してサーバを自動検出、設定ファイルのテンプレートを生成
 - EmailやSlackで通知可能（日本語でのレポートも可能）
@@ -65,7 +67,6 @@ Vulsは上に挙げた手動運用での課題を解決するツールであり�
 Vulsのセットアップは以下の３パターンがある
 
 -  Dockerコンテナ上にセットアップ  
-Docker Composeを用いて少ないコマンドでセットアップ可能  
 see https://github.com/future-architect/vuls/tree/master/setup/docker  
 [日本語README](https://github.com/future-architect/vuls/blob/master/setup/docker/README.ja.md)  
 - Chefでセットアップ  
@@ -121,17 +122,17 @@ VulsはSSHパスワード認証をサポートしていない。SSH公開鍵鍵�
 
 Vulsセットアップに必要な以下のソフトウェアをインストールする。
 
-- SQLite3
-- git v2
+- SQLite3 or MySQL
+- git
 - gcc
-- go v1.6
+- go v1.7.1 or later
     - https://golang.org/doc/install
 
 ```bash
 $ ssh ec2-user@52.100.100.100  -i ~/.ssh/private.pem
 $ sudo yum -y install sqlite git gcc
-$ wget https://storage.googleapis.com/golang/go1.6.linux-amd64.tar.gz
-$ sudo tar -C /usr/local -xzf go1.6.linux-amd64.tar.gz
+$ wget https://storage.googleapis.com/golang/go1.7.1.linux-amd64.tar.gz
+$ sudo tar -C /usr/local -xzf go1.7.1.linux-amd64.tar.gz
 $ mkdir $HOME/go
 ```
 /etc/profile.d/goenv.sh を作成し、下記を追加する。 
@@ -149,26 +150,19 @@ $ source /etc/profile.d/goenv.sh
 
 ## Step4. Deploy [go-cve-dictionary](https://github.com/kotakanbe/go-cve-dictionary)
 
-go get
-
 ```bash
 $ sudo mkdir /var/log/vuls
 $ sudo chown ec2-user /var/log/vuls
 $ sudo chmod 700 /var/log/vuls
-$ go get github.com/kotakanbe/go-cve-dictionary
+$
+$ mkdir -p $GOPATH/src/github.com/kotakanbe
+$ cd $GOPATH/src/github.com/kotakanbe
+$ git https://github.com/kotakanbe/go-cve-dictionary.git
+$ cd go-cve-dictionary
+$ make install
 ```
+バイナリは、`$GOPATH/bin`いかに生成される
 
-go-cve-dictionaryを既にインストール済みでupdateしたい場合は
-
-```bash
-$ go get -u github.com/kotakanbe/go-cve-dictionary
-```
-
-で可能である。
-
-go getでエラーが発生した場合は、以下の点を確認する。
-- Gitのバージョンがv2以降か？
-- Go依存パッケージの問題でgo getに失敗する場合は [deploying with glide](https://github.com/future-architect/vuls/blob/master/README.md#deploy-with-glide) を試す。
 
 NVDから脆弱性データベースを取得する。  
 環境によって異なるが、AWS上では10分程度かかる。
@@ -183,10 +177,12 @@ $ ls -alh cve.sqlite3
 ## Step5. Deploy Vuls
 
 新規にターミナルを起動し、先ほど作成したEC2にSSH接続する。
-
-go get
 ```
-$ go get github.com/future-architect/vuls
+$ mkdir -p $GOPATH/src/github.com/future-architect
+$ cd $GOPATH/src/github.com/future-architect
+$ git clone https://github.com/future-architect/vuls.git
+$ cd vuls
+$ make install
 ```
 
 vulsを既にインストール済みでupdateしたい場合は
@@ -229,7 +225,7 @@ $ vuls prepare
 ## Step8. Start Scanning
 
 ```
-$ vuls scan -cve-dictionary-dbpath=$PWD/cve.sqlite3
+$ vuls scan -cve-dictionary-dbpath=$PWD/cve.sqlite3 -report-json
 INFO[0000] Start scanning (config: /home/ec2-user/config.toml)
 INFO[0000] Start scanning
 INFO[0000] config: /home/ec2-user/config.toml
@@ -256,7 +252,7 @@ Summary         Unspecified vulnerability in the Java SE and Java SE Embedded co
 NVD             https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2016-0494
 MITRE           https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-0494
 CVE Details     http://www.cvedetails.com/cve/CVE-2016-0494
-CVSS Claculator https://nvd.nist.gov/cvss/v2-calculator?name=CVE-2016-0494&vector=(AV:N/AC:L/Au:N/C:C/I:C/A:C)
+CVSS Calculator https://nvd.nist.gov/cvss/v2-calculator?name=CVE-2016-0494&vector=(AV:N/AC:L/Au:N/C:C/I:C/A:C)
 RHEL-CVE        https://access.redhat.com/security/cve/CVE-2016-0494
 ALAS-2016-643   https://alas.aws.amazon.com/ALAS-2016-643.html
 Package/CPE     java-1.7.0-openjdk-1.7.0.91-2.6.2.2.63.amzn1 -> java-1.7.0-openjdk-1:1.7.0.95-2.6.4.0.65.amzn1
@@ -375,7 +371,7 @@ notifyUsers  = ["@username"]
 
 [mail]
 smtpAddr      = "smtp.gmail.com"
-smtpPort      = "465"
+smtpPort      = "587"
 user          = "username"
 password      = "password"
 from          = "from@address.com"
@@ -428,7 +424,7 @@ host         = "172.31.4.82"
     notifyUsers  = ["@username"]
     ```
 
-    - hookURL : Incomming webhook's URL  
+    - hookURL : Incoming webhook's URL  
     - channel : channel name.  
     channelに`${servername}`を指定すると、結果レポートをサーバごとに別チャネルにすることが出来る。
     以下のサンプルでは、`#server1`チャネルと`#server2`チャネルに送信される。スキャン前にチャネルを作成する必要がある。
@@ -456,7 +452,7 @@ host         = "172.31.4.82"
     ```
     [mail]
     smtpAddr      = "smtp.gmail.com"
-    smtpPort      = "465"
+    smtpPort      = "587"
     user          = "username"
     password      = "password"
     from          = "from@address.com"
@@ -475,6 +471,7 @@ host         = "172.31.4.82"
     #  "cpe:/a:rubyonrails:ruby_on_rails:4.2.1",
     #]
     #containers = ["${running}"]
+    #ignoreCves = ["CVE-2016-6313"]
     #optional = [
     #    ["key", "value"],
     #]
@@ -494,6 +491,7 @@ host         = "172.31.4.82"
     #  "cpe:/a:rubyonrails:ruby_on_rails:4.2.1",
     #]
     #containers = ["${running}"]
+    #ignoreCves = ["CVE-2016-6314"]
     #optional = [
     #    ["key", "value"],
     #]
@@ -508,6 +506,7 @@ host         = "172.31.4.82"
     - keyPath: SSH private key path
     - cpeNames: see [Usage: Scan vulnerability of non-OS package](https://github.com/future-architect/vuls/blob/master/README.ja.md#usage-scan-vulnerability-of-non-os-package)
     - containers: see [Usage: Scan Docker containers](https://github.com/future-architect/vuls/blob/master/README.ja.md#usage-scan-docker-containers)
+    - ignoreCves: CVE IDs that will not be reported. But output to JSON file.
     - optional: JSONレポートに含めたい追加情報
 
 
@@ -563,7 +562,7 @@ vuls ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt-cache
 
 # Usage: Prepare
 
-Prepareサブコマンドは、Vuls内部で利用する以下のパッケージをスキャン対象サーバにインストーする。
+Prepareサブコマンドは、Vuls内部で利用する以下のパッケージをスキャン対象サーバにインストールする。
 
 | Distribution|            Release | Requirements |
 |:------------|-------------------:|:-------------|
@@ -578,17 +577,22 @@ Prepareサブコマンドは、Vuls内部で利用する以下のパッケージ
 
 ```
 $ vuls prepare -help
-prepare
-                        [-config=/path/to/config.toml] [-debug]
+prepare:
+        prepare
+                        [-config=/path/to/config.toml]
                         [-ask-key-password]
-                        [SERVER]...
+                        [-debug]
+                        [-ssh-external]
 
+                        [SERVER]...
   -ask-key-password
         Ask ssh privatekey password before scanning
   -config string
         /path/to/toml (default "$PWD/config.toml")
   -debug
         debug mode
+  -ssh-external
+        Use external ssh command. Default: Use the Go native implementation
 ```
 
 ----
@@ -602,7 +606,8 @@ scan:
                 [-lang=en|ja]
                 [-config=/path/to/config.toml]
                 [-results-dir=/path/to/results]
-                [-cve-dictionary-dbpath=/path/to/cve.sqlite3]
+                [-cve-dictionary-dbtype=sqlite3|mysql]
+                [-cve-dictionary-dbpath=/path/to/cve.sqlite3 or mysql connection string]
                 [-cve-dictionary-url=http://127.0.0.1:1323]
                 [-cache-dbpath=/path/to/cache.db]
                 [-cvss-over=7]
@@ -649,7 +654,9 @@ scan:
   -containers-only
         Scan concontainers Only. Default: Scan both of hosts and containers
   -cve-dictionary-dbpath string
-        /path/to/sqlite3 (For get cve detail from cve.sqlite3)        
+        /path/to/sqlite3 (For get cve detail from cve.sqlite3)
+  -cve-dictionary-dbtype string
+        DB type for fetching CVE dictionary (sqlite3 or mysql) (default "sqlite3")
   -cve-dictionary-url string
         http://CVE.Dictionary (default "http://127.0.0.1:1323")
   -cvss-over float
@@ -788,6 +795,43 @@ $ vuls scan \
       -azure-container=vuls
 ```
 
+## Example: IgnoreCves 
+
+Slack, Mail, テキスト出力しないくないCVE IDがある場合は、設定ファイルに定義することでレポートされなくなる。
+ただ、JSONファイルには以下のように出力される。
+
+- config.toml
+```toml
+[default]
+ignoreCves = ["CVE-2016-6313"]
+
+[servers.bsd]
+host     = "192.168.11.11"
+user     = "kanbe"
+ignoreCves = ["CVE-2016-6314"]
+```
+
+- bsd.json
+```json
+[
+  {
+    "ServerName": "bsd",
+    "Family": "FreeBSD",
+    "Release": "10.3-RELEASE",
+    "IgnoredCves" : [
+      "CveDetail" : {
+        "CVE-2016-6313",
+        ...
+      },
+      "CveDetail" : {
+        "CVE-2016-6314",
+        ...
+      }
+    ]
+  }
+]
+```
+
 ## Example: Add optional key-value pairs to JSON
 
 追加情報をJSONに含めることができる。  
@@ -828,6 +872,14 @@ optional = [
 ]
 ```
 
+## Example: Use MySQL as a DB storage back-end
+
+```
+$ vuls scan \
+      -cve-dictionary-dbtype=mysql \
+      -cve-dictionary-dbpath="user:pass@tcp(localhost:3306)/dbname?parseTime=true"
+```
+
 ----
 
 # Usage: Scan vulnerability of non-OS package
@@ -855,6 +907,31 @@ Vulsは、[CPE](https://nvd.nist.gov/cpe.cfm)に登録されているソフト�
       "cpe:/a:rubyonrails:ruby_on_rails:4.2.1",
     ]
     ```
+
+
+# Usage: Integrate with OWASP Dependency Check to Automatic update when the libraries are updated (Experimental)
+[OWASP Dependency check](https://www.owasp.org/index.php/OWASP_Dependency_Check) は、プログラミング言語のライブラリを特定し（CPEを推測）、公開済みの脆弱性を検知するツール。
+
+VulsとDependency Checkを連携させる方法は以下
+- Dependency Checkを、--format=XMLをつけて実行する
+- そのXMLをconfig.toml内で以下のように定義する
+
+    ```
+    [servers]
+
+    [servers.172-31-4-82]
+    host         = "172.31.4.82"
+    user        = "ec2-user"
+    keyPath     = "/home/username/.ssh/id_rsa"
+    dependencyCheckXMLPath = "/tmp/dependency-check-report.xml"
+    ```
+
+VulsとDependency Checkの連携すると以下の利点がある
+- ライブラリを更新した場合に、config.tomlのCPEの定義を変更しなくても良い
+- Vulsの機能でSlack, Emailで通知可能
+- 日本語のレポートが可能
+  - Dependency Checkは日本語レポートに対応していない
+
     
 # Usage: Scan Docker containers
 
@@ -909,14 +986,14 @@ tui:
 
 ```
 
-Key binding is bellow.
+Key binding is below.
 
 | key | |
 |:-----------------|:-------|:------|
 | TAB | move cursor among the panes |
 | Arrow up/down | move cursor to up/down |
-| Ctrl+j, Ctrl+k | move cursor to up/donw |
-| Ctrl+u, Ctrl+d | page up/donw |
+| Ctrl+j, Ctrl+k | move cursor to up/down |
+| Ctrl+u, Ctrl+d | page up/down |
 
 For details, see https://github.com/future-architect/vuls/blob/master/report/tui.go
 
@@ -962,89 +1039,14 @@ $ vuls scan -cve-dictionary-url=http://192.168.0.1:1323
 
 # Usage: Update NVD Data
 
-```
-$ go-cve-dictionary fetchnvd -h
-fetchnvd:
-        fetchnvd
-                [-last2y]
-                [-dbpath=/path/to/cve.sqlite3]
-                [-debug]
-                [-debug-sql]
-
-  -dbpath string
-        /path/to/sqlite3 (default "$PWD/cve.sqlite3")
-  -debug
-        debug mode
-  -debug-sql
-        SQL debug mode
-  -last2y
-        Refresh NVD data in the last two years.
-```
-
-- Fetch data of the entire period
-
-```
-$ for i in {2002..2016}; do go-cve-dictionary fetchnvd -years $i; done
-```
-
-- Fetch data in the last 2 years
-
-```
-$ go-cve-dictionary fetchnvd -last2y
-```
+see [go-cve-dictionary#usage-fetch-nvd-data](https://github.com/kotakanbe/go-cve-dictionary#usage-fetch-nvd-data)
 
 ----
 
 # レポートの日本語化
 
-- JVNから日本語の脆弱性情報を取得
-    ```
-    $ go-cve-dictionary fetchjvn -h
-    fetchjvn:
-            fetchjvn
-                    [-latest]
-                    [-last2y]
-                    [-years] 1998 1999 ...
-                    [-dbpath=$PWD/cve.sqlite3]
-                    [-http-proxy=http://192.168.0.1:8080]
-                    [-debug]
-                    [-debug-sql]
+see [go-cve-dictionary#usage-fetch-jvn-data](https://github.com/kotakanbe/go-cve-dictionary#usage-fetch-jvn-data)
 
-      -dbpath string
-            /path/to/sqlite3 (default "$PWD/cve.sqlite3")
-      -debug
-            debug mode
-      -debug-sql
-            SQL debug mode
-      -http-proxy string
-            http://proxy-url:port (default: empty)
-      -last2y
-            Refresh JVN data in the last two years.
-      -latest
-            Refresh JVN data for latest.
-      -years
-            Refresh JVN data of specific years.
-
-    ```
-
-- すべての期間の脆弱性情報を取得(10分未満)
-    ```
-    $ for i in {1998..2016}; do ./go-cve-dictionary fetchjvn -years $i; done
-    ```
-
-- 2年分の情報を取得
-    ```
-    $ go-cve-dictionary fetchjvn -last2y
-    ```
-
-- 最新情報のみ取得
-    ```
-    $ go-cve-dictionary fetchjvn -latest
-    ```
-
-- 脆弱性情報の自動アップデート  
-Cronなどのジョブスケジューラを用いて実現可能。  
--latestオプションを指定して夜間の日次実行を推奨。
 
 ## fetchnvd, fetchjvnの実行順序の注意
 
@@ -1075,45 +1077,23 @@ slack, emailは日本語対応済み TUIは日本語表示未対応
 
 ----
 
-# Deploy With Glide
-
-If an error occurred while go get, try deploying with glide.  
-- Install [Glide](https://github.com/Masterminds/glide)
-- Deploy go-cve-dictionary
-```
-$ go get -d github.com/kotakanbe/go-cve-dictionary
-$ cd $GOPATH/src/github.com/kotakanbe/go-cve-dictionary
-$ glide install
-$ go install
-```
-- Deploy vuls
-```
-$ go get -d github.com/future-architect/vuls
-$ cd $GOPATH/src/github.com/future-architect/vuls
-$ glide install
-$ go install
-```
-- The binaries are created under $GOPARH/bin
-
-----
-
 # Update Vuls With Glide
 
 - Update go-cve-dictionary  
-If the DB schema was changed, please specify new SQLite3 DB file.
+If the DB schema was changed, please specify new SQLite3 or MySQL DB file.
 ```
 $ cd $GOPATH/src/github.com/kotakanbe/go-cve-dictionary
 $ git pull
-$ glide install
-$ go install
+$ mv vendor /tmp/foo
+$ make install
 ```
 
 - Update vuls
 ```
 $ cd $GOPATH/src/github.com/future-architect/vuls
 $ git pull
-$ glide install
-$ go install
+$ mv vendor /tmp/bar
+$ make install
 ```
 - バイナリファイルは`$GOPARH/bin`以下に作成される
 
@@ -1210,7 +1190,7 @@ Please see [CHANGELOG](https://github.com/future-architect/vuls/blob/master/CHAN
 
 ----
 
-# Licence
+# License
 
 Please see [LICENSE](https://github.com/future-architect/vuls/blob/master/LICENSE).
 

@@ -65,6 +65,10 @@ func (o *bsd) checkIfSudoNoPasswd() error {
 	return nil
 }
 
+func (o *bsd) checkDependencies() error {
+	return nil
+}
+
 func (o *bsd) install() error {
 	return nil
 }

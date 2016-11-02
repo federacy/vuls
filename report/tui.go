@@ -44,26 +44,28 @@ func RunTui(jsonDirName string) subcommands.ExitStatus {
 	var err error
 	scanHistory, err = selectScanHistory(jsonDirName)
 	if err != nil {
-		log.Fatal(err)
+		log.Errorf("%s", err)
 		return subcommands.ExitFailure
 	}
 
-	g := gocui.NewGui()
-	if err := g.Init(); err != nil {
-		log.Panicln(err)
+	g, err := gocui.NewGui()
+	if err != nil {
+		log.Errorf("%s", err)
+		return subcommands.ExitFailure
 	}
 	defer g.Close()
 
-	g.SetLayout(layout)
+	g.SetManagerFunc(layout)
 	if err := keybindings(g); err != nil {
-		log.Panicln(err)
+		log.Errorf("%s", err)
+		return subcommands.ExitFailure
 	}
 	g.SelBgColor = gocui.ColorGreen
 	g.SelFgColor = gocui.ColorBlack
 	g.Cursor = true
 
 	if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
-		log.Panicln(err)
+		log.Errorf("%s", err)
 		return subcommands.ExitFailure
 	}
 
@@ -174,35 +176,41 @@ func keybindings(g *gocui.Gui) (err error) {
 }
 
 func nextView(g *gocui.Gui, v *gocui.View) error {
+	var err error
+
 	if v == nil {
-		return g.SetCurrentView("side")
+		_, err = g.SetCurrentView("side")
 	}
 	switch v.Name() {
 	case "side":
-		return g.SetCurrentView("summary")
+		_, err = g.SetCurrentView("summary")
 	case "summary":
-		return g.SetCurrentView("detail")
+		_, err = g.SetCurrentView("detail")
 	case "detail":
-		return g.SetCurrentView("side")
+		_, err = g.SetCurrentView("side")
 	default:
-		return g.SetCurrentView("summary")
+		_, err = g.SetCurrentView("summary")
 	}
+	return err
 }
 
 func previousView(g *gocui.Gui, v *gocui.View) error {
+	var err error
+
 	if v == nil {
-		return g.SetCurrentView("side")
+		_, err = g.SetCurrentView("side")
 	}
 	switch v.Name() {
 	case "side":
-		return g.SetCurrentView("side")
+		_, err = g.SetCurrentView("side")
 	case "summary":
-		return g.SetCurrentView("side")
+		_, err = g.SetCurrentView("side")
 	case "detail":
-		return g.SetCurrentView("summary")
+		_, err = g.SetCurrentView("summary")
 	default:
-		return g.SetCurrentView("side")
+		_, err = g.SetCurrentView("side")
 	}
+	return err
 }
 
 func movable(v *gocui.View, nextY int) (ok bool, yLimit int) {
@@ -371,7 +379,7 @@ func cursorPageUp(g *gocui.Gui, v *gocui.View) error {
 func previousSummary(g *gocui.Gui, v *gocui.View) error {
 	if v != nil {
 		// cursor to summary
-		if err := g.SetCurrentView("summary"); err != nil {
+		if _, err := g.SetCurrentView("summary"); err != nil {
 			return err
 		}
 		// move next line
@@ -379,7 +387,7 @@ func previousSummary(g *gocui.Gui, v *gocui.View) error {
 			return err
 		}
 		// cursor to detail
-		if err := g.SetCurrentView("detail"); err != nil {
+		if _, err := g.SetCurrentView("detail"); err != nil {
 			return err
 		}
 	}
@@ -389,7 +397,7 @@ func previousSummary(g *gocui.Gui, v *gocui.View) error {
 func nextSummary(g *gocui.Gui, v *gocui.View) error {
 	if v != nil {
 		// cursor to summary
-		if err := g.SetCurrentView("summary"); err != nil {
+		if _, err := g.SetCurrentView("summary"); err != nil {
 			return err
 		}
 		// move next line
@@ -397,7 +405,7 @@ func nextSummary(g *gocui.Gui, v *gocui.View) error {
 			return err
 		}
 		// cursor to detail
-		if err := g.SetCurrentView("detail"); err != nil {
+		if _, err := g.SetCurrentView("detail"); err != nil {
 			return err
 		}
 	}
@@ -462,7 +470,7 @@ func getLine(g *gocui.Gui, v *gocui.View) error {
 			return err
 		}
 		fmt.Fprintln(v, l)
-		if err := g.SetCurrentView("msg"); err != nil {
+		if _, err := g.SetCurrentView("msg"); err != nil {
 			return err
 		}
 	}
@@ -484,7 +492,7 @@ func showMsg(g *gocui.Gui, v *gocui.View) error {
 			return err
 		}
 		fmt.Fprintln(v, l)
-		if err := g.SetCurrentView("msg"); err != nil {
+		if _, err := g.SetCurrentView("msg"); err != nil {
 			return err
 		}
 	}
@@ -495,7 +503,7 @@ func delMsg(g *gocui.Gui, v *gocui.View) error {
 	if err := g.DeleteView("msg"); err != nil {
 		return err
 	}
-	if err := g.SetCurrentView("summary"); err != nil {
+	if _, err := g.SetCurrentView("summary"); err != nil {
 		return err
 	}
 	return nil
@@ -530,7 +538,7 @@ func setSideLayout(g *gocui.Gui) error {
 			fmt.Fprintln(v, result.ServerInfoTui())
 		}
 		currentScanResult = scanHistory.ScanResults[0]
-		if err := g.SetCurrentView("side"); err != nil {
+		if _, err := g.SetCurrentView("side"); err != nil {
 			return err
 		}
 	}

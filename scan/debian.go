@@ -124,7 +124,31 @@ func (o *debian) checkIfSudoNoPasswd() error {
 	return nil
 }
 
+func (o *debian) checkDependencies() error {
+	switch o.Distro.Family {
+	case "ubuntu":
+		return nil
+
+	case "debian":
+		// Debian needs aptitude to get changelogs.
+		// Because unable to get changelogs via apt-get changelog on Debian.
+		name := "aptitude"
+		cmd := name + " -h"
+		if r := o.ssh(cmd, noSudo); !r.isSuccess() {
+			o.lackDependencies = []string{name}
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("Not implemented yet: %s", o.Distro)
+	}
+}
+
 func (o *debian) install() error {
+	if len(o.lackDependencies) == 0 {
+		return nil
+	}
+
 	// apt-get update
 	o.log.Infof("apt-get update...")
 	cmd := util.PrependProxyEnv("apt-get update")
@@ -134,15 +158,14 @@ func (o *debian) install() error {
 		return fmt.Errorf(msg)
 	}
 
-	if o.Distro.Family == "debian" {
-		// install aptitude
-		cmd = util.PrependProxyEnv("apt-get install --force-yes -y aptitude")
+	for _, name := range o.lackDependencies {
+		cmd = util.PrependProxyEnv("apt-get install " + name)
 		if r := o.exec(cmd, sudo); !r.isSuccess() {
 			msg := fmt.Sprintf("Failed to SSH: %s", r)
 			o.log.Errorf(msg)
 			return fmt.Errorf(msg)
 		}
-		o.log.Infof("Installed: aptitude")
+		o.log.Infof("Installed: " + name)
 	}
 	return nil
 }
@@ -302,7 +325,7 @@ func (o *debian) fillCandidateVersion(before models.PackageInfoList) (filled []m
 	for _, p := range before {
 		names = append(names, p.Name)
 	}
-	cmd := fmt.Sprintf("LANG=en_US.UTF-8 apt-cache policy %s", strings.Join(names, " "))
+	cmd := fmt.Sprintf("LANGUAGE=en_US.UTF-8 apt-cache policy %s", strings.Join(names, " "))
 	r := o.exec(cmd, noSudo)
 	if !r.isSuccess() {
 		return nil, fmt.Errorf("Failed to SSH: %s.", r)
@@ -324,7 +347,7 @@ func (o *debian) fillCandidateVersion(before models.PackageInfoList) (filled []m
 }
 
 func (o *debian) GetUpgradablePackNames() (packNames []string, err error) {
-	cmd := util.PrependProxyEnv("LANG=en_US.UTF-8 apt-get upgrade --dry-run")
+	cmd := util.PrependProxyEnv("LANGUAGE=en_US.UTF-8 apt-get upgrade --dry-run")
 	r := o.exec(cmd, noSudo)
 	if r.isSuccess(0, 1) {
 		return o.parseAptGetUpgrade(r.Stdout)
@@ -494,7 +517,7 @@ func (o *debian) getChangelogCache(meta cache.Meta, pack models.PackageInfo) str
 	}
 	changelog, err := cache.DB.GetChangelog(meta.Name, pack.Name)
 	if err != nil {
-		o.log.Warnf("Failed to get chnagelog. bucket: %s, key:%s, err: %s",
+		o.log.Warnf("Failed to get changelog. bucket: %s, key:%s, err: %s",
 			meta.Name, pack.Name, err)
 		return ""
 	}
@@ -522,11 +545,13 @@ func (o *debian) scanPackageCveIDs(pack models.PackageInfo) ([]string, error) {
 		o.log.Warnf("Failed to SSH: %s", r)
 		// Ignore this Error.
 		return nil, nil
-
 	}
-	err := cache.DB.PutChangelog(o.getServerInfo().GetServerName(), pack.Name, r.Stdout)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to put changelog into cache")
+
+	if 0 < len(strings.TrimSpace(r.Stdout)) {
+		err := cache.DB.PutChangelog(o.getServerInfo().GetServerName(), pack.Name, r.Stdout)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to put changelog into cache")
+		}
 	}
 	// No error will be returned. Only logging.
 	return o.getCveIDFromChangelog(r.Stdout, pack.Name, pack.Version), nil

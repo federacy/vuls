@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 package commands
 
 import (
+	"context"
 	"flag"
 	"os"
 	"path/filepath"
@@ -27,7 +28,6 @@ import (
 	"github.com/future-architect/vuls/scan"
 	"github.com/future-architect/vuls/util"
 	"github.com/google/subcommands"
-	"golang.org/x/net/context"
 )
 
 // PrepareCmd is Subcommand of host discovery mode
@@ -37,6 +37,8 @@ type PrepareCmd struct {
 
 	askSudoPassword bool
 	askKeyPassword  bool
+
+	sshExternal bool
 }
 
 // Name return subcommand name
@@ -60,8 +62,9 @@ func (*PrepareCmd) Usage() string {
 			[-config=/path/to/config.toml]
 			[-ask-key-password]
 			[-debug]
+			[-ssh-external]
 
-		    [SERVER]...
+			[SERVER]...
 `
 }
 
@@ -86,8 +89,15 @@ func (p *PrepareCmd) SetFlags(f *flag.FlagSet) {
 		&p.askSudoPassword,
 		"ask-sudo-password",
 		false,
-		"[Deprecated] THIS OPTION WAS REMOVED FOR SECURITY REASON. Define NOPASSWD in /etc/sudoers on tareget servers and use SSH key-based authentication",
+		"[Deprecated] THIS OPTION WAS REMOVED FOR SECURITY REASONS. Define NOPASSWD in /etc/sudoers on target servers and use SSH key-based authentication",
 	)
+
+	f.BoolVar(
+		&p.sshExternal,
+		"ssh-external",
+		false,
+		"Use external ssh command. Default: Use the Go native implementation")
+
 }
 
 // Execute execute
@@ -102,7 +112,7 @@ func (p *PrepareCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{
 		}
 	}
 	if p.askSudoPassword {
-		logrus.Errorf("[Deprecated] -ask-sudo-password WAS REMOVED FOR SECURITY REASONS. Define NOPASSWD in /etc/sudoers on tareget servers and use SSH key-based authentication")
+		logrus.Errorf("[Deprecated] -ask-sudo-password WAS REMOVED FOR SECURITY REASONS. Define NOPASSWD in /etc/sudoers on target servers and use SSH key-based authentication")
 		return subcommands.ExitFailure
 	}
 
@@ -133,6 +143,7 @@ func (p *PrepareCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{
 	}
 
 	c.Conf.Debug = p.debug
+	c.Conf.SSHExternal = p.sshExternal
 
 	// Set up custom logger
 	logger := util.NewCustomLogger(c.ServerInfo{})
@@ -149,10 +160,9 @@ func (p *PrepareCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{
 		return subcommands.ExitFailure
 	}
 
-	logger.Info("Installing...")
 	if errs := scan.Prepare(); 0 < len(errs) {
 		for _, e := range errs {
-			logger.Errorf("Failed: %s", e)
+			logger.Errorf("Failed to prepare: %s", e)
 		}
 		return subcommands.ExitFailure
 	}

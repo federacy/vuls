@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 package commands
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -34,7 +35,7 @@ import (
 	"github.com/future-architect/vuls/scan"
 	"github.com/future-architect/vuls/util"
 	"github.com/google/subcommands"
-	"golang.org/x/net/context"
+	"github.com/k0kubun/pp"
 )
 
 // ScanCmd is Subcommand of host discovery mode
@@ -46,6 +47,7 @@ type ScanCmd struct {
 	configPath string
 
 	resultsDir       string
+	cvedbtype        string
 	cvedbpath        string
 	cveDictionaryURL string
 	cacheDBPath      string
@@ -91,7 +93,8 @@ func (*ScanCmd) Usage() string {
 		[-lang=en|ja]
 		[-config=/path/to/config.toml]
 		[-results-dir=/path/to/results]
-		[-cve-dictionary-dbpath=/path/to/cve.sqlite3]
+		[-cve-dictionary-dbtype=sqlite3|mysql]
+		[-cve-dictionary-dbpath=/path/to/cve.sqlite3 or mysql connection string]
 		[-cve-dictionary-url=http://127.0.0.1:1323]
 		[-cache-dbpath=/path/to/cache.db]
 		[-cvss-over=7]
@@ -135,6 +138,12 @@ func (p *ScanCmd) SetFlags(f *flag.FlagSet) {
 
 	defaultResultsDir := filepath.Join(wd, "results")
 	f.StringVar(&p.resultsDir, "results-dir", defaultResultsDir, "/path/to/results")
+
+	f.StringVar(
+		&p.cvedbtype,
+		"cve-dictionary-dbtype",
+		"sqlite3",
+		"DB type for fetching CVE dictionary (sqlite3 or mysql)")
 
 	f.StringVar(
 		&p.cvedbpath,
@@ -212,7 +221,7 @@ func (p *ScanCmd) SetFlags(f *flag.FlagSet) {
 	f.BoolVar(&p.reportAzureBlob,
 		"report-azure-blob",
 		false,
-		"Write report to S3 (container/yyyyMMdd_HHmm/servername.json)",
+		"Write report to Azure Storage blob (container/yyyyMMdd_HHmm/servername.json)",
 	)
 	f.StringVar(&p.azureAccount, "azure-account", "", "Azure account name to use. AZURE_STORAGE_ACCOUNT environment variable is used if not specified")
 	f.StringVar(&p.azureKey, "azure-key", "", "Azure account key to use. AZURE_STORAGE_ACCESS_KEY environment variable is used if not specified")
@@ -229,7 +238,7 @@ func (p *ScanCmd) SetFlags(f *flag.FlagSet) {
 		&p.askSudoPassword,
 		"ask-sudo-password",
 		false,
-		"[Deprecated] THIS OPTION WAS REMOVED FOR SECURITY REASONS. Define NOPASSWD in /etc/sudoers on tareget servers and use SSH key-based authentication",
+		"[Deprecated] THIS OPTION WAS REMOVED FOR SECURITY REASONS. Define NOPASSWD in /etc/sudoers on target servers and use SSH key-based authentication",
 	)
 }
 
@@ -246,11 +255,12 @@ func (p *ScanCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 		}
 	}
 	if p.askSudoPassword {
-		logrus.Errorf("[Deprecated] -ask-sudo-password WAS REMOVED FOR SECURITY REASONS. Define NOPASSWD in /etc/sudoers on tareget servers and use SSH key-based authentication")
+		logrus.Errorf("[Deprecated] -ask-sudo-password WAS REMOVED FOR SECURITY REASONS. Define NOPASSWD in /etc/sudoers on target servers and use SSH key-based authentication")
 		return subcommands.ExitFailure
 	}
 
 	// Load up the config file here
+	c.Conf.Debug = p.debug
 	err = c.Load(p.configPath, keyPass)
 	if err != nil {
 		logrus.Errorf("Error loading %s, %s", p.configPath, err)
@@ -260,7 +270,9 @@ func (p *ScanCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 	logrus.Info("Start scanning")
 	logrus.Infof("config: %s", p.configPath)
 	if p.cvedbpath != "" {
-		logrus.Infof("cve-dictionary: %s", p.cvedbpath)
+		if p.cvedbtype == "sqlite3" {
+			logrus.Infof("cve-dictionary: %s", p.cvedbpath)
+		}
 	} else {
 		logrus.Infof("cve-dictionary: %s", p.cveDictionaryURL)
 	}
@@ -301,9 +313,9 @@ func (p *ScanCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 	if 0 < len(servernames) {
 		c.Conf.Servers = target
 	}
+	logrus.Debugf("%s", pp.Sprintf("%v", target))
 
 	c.Conf.Lang = p.lang
-	c.Conf.Debug = p.debug
 	c.Conf.DebugSQL = p.debugSQL
 
 	// logger
@@ -363,6 +375,7 @@ func (p *ScanCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 	}
 
 	c.Conf.ResultsDir = p.resultsDir
+	c.Conf.CveDBType = p.cvedbtype
 	c.Conf.CveDBPath = p.cvedbpath
 	c.Conf.CveDictionaryURL = p.cveDictionaryURL
 	c.Conf.CacheDBPath = p.cacheDBPath

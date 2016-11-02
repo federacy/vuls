@@ -33,8 +33,9 @@ import (
 type base struct {
 	ServerInfo config.ServerInfo
 	Distro     config.Distro
+	Platform   models.Platform
 
-	Platform models.Platform
+	lackDependencies []string
 	osPackages
 
 	log  *logrus.Entry
@@ -83,6 +84,10 @@ func (l *base) setPlatform(p models.Platform) {
 
 func (l base) getPlatform() models.Platform {
 	return l.Platform
+}
+
+func (l base) getLackDependencies() []string {
+	return l.lackDependencies
 }
 
 func (l base) allContainers() (containers []config.Container, err error) {
@@ -227,13 +232,31 @@ func (l base) isAwsInstanceID(str string) bool {
 }
 
 func (l *base) convertToModel() (models.ScanResult, error) {
-	var scoredCves, unscoredCves models.CveInfos
+	var scoredCves, unscoredCves, ignoredCves models.CveInfos
 	for _, p := range l.UnsecurePackages {
+		// ignoreCves
+		found := false
+		for _, icve := range l.getServerInfo().IgnoreCves {
+			if icve == p.CveDetail.CveID {
+				ignoredCves = append(ignoredCves, models.CveInfo{
+					CveDetail:        p.CveDetail,
+					Packages:         p.Packs,
+					DistroAdvisories: p.DistroAdvisories,
+				})
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+
+		// unscoredCves
 		if p.CveDetail.CvssScore(config.Conf.Lang) <= 0 {
 			unscoredCves = append(unscoredCves, models.CveInfo{
 				CveDetail:        p.CveDetail,
 				Packages:         p.Packs,
-				DistroAdvisories: p.DistroAdvisories, // only Amazon Linux
+				DistroAdvisories: p.DistroAdvisories,
 			})
 			continue
 		}
@@ -244,10 +267,11 @@ func (l *base) convertToModel() (models.ScanResult, error) {
 				models.CpeName{Name: cpename})
 		}
 
+		// scoredCves
 		cve := models.CveInfo{
 			CveDetail:        p.CveDetail,
 			Packages:         p.Packs,
-			DistroAdvisories: p.DistroAdvisories, // only Amazon Linux
+			DistroAdvisories: p.DistroAdvisories,
 			CpeNames:         cpenames,
 		}
 		scoredCves = append(scoredCves, cve)
@@ -260,6 +284,7 @@ func (l *base) convertToModel() (models.ScanResult, error) {
 
 	sort.Sort(scoredCves)
 	sort.Sort(unscoredCves)
+	sort.Sort(ignoredCves)
 
 	return models.ScanResult{
 		ServerName:  l.ServerInfo.ServerName,
@@ -270,6 +295,7 @@ func (l *base) convertToModel() (models.ScanResult, error) {
 		Platform:    l.Platform,
 		KnownCves:   scoredCves,
 		UnknownCves: unscoredCves,
+		IgnoredCves: ignoredCves,
 		Optional:    l.ServerInfo.Optional,
 	}, nil
 }

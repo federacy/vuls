@@ -25,7 +25,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"os/exec"
+	ex "os/exec"
 	"strings"
 	"syscall"
 	"time"
@@ -149,6 +149,7 @@ func parallelSSHExec(fn func(osTypeInterface) error, timeoutSec ...int) (errs []
 }
 
 func exec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
+	var logger *logrus.Entry
 	if (c.Port == "" || c.Port == "local") && 
 	   (c.Host == "127.0.0.1" || c.Host == "localhost") {
 	   	result = localExec(c, cmd, sudo, logger)
@@ -447,4 +448,8 @@ func parsePemBlock(block *pem.Block) (interface{}, error) {
 	default:
 		return nil, fmt.Errorf("Unsupported key type %q", block.Type)
 	}
+}
+
+func maskPassword(cmd, sudoPass string) string {
+	return strings.Replace(cmd, fmt.Sprintf("echo %s", sudoPass), "echo *****", -1)
 }

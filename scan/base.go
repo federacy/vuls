@@ -45,10 +45,6 @@ func (l *base) exec(cmd string, sudo bool) sshResult {
 	return exec(l.ServerInfo, cmd, sudo, l.log)
 }
  
-func (l *base) ssh(cmd string, sudo bool) sshResult {
-	return sshExec(l.ServerInfo, cmd, sudo, l.log)
-}
-
 func (l *base) setServerInfo(c config.ServerInfo) {
 	l.ServerInfo = c
 }

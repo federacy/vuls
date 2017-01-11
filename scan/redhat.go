@@ -242,7 +242,7 @@ func (o *redhat) scanVulnInfos() ([]models.VulnInfo, error) {
 
 // For CentOS
 func (o *redhat) scanUnsecurePackagesUsingYumCheckUpdate() (models.VulnInfos, error) {
-	cmd := "LANGUAGE=en_US.UTF-8 yum --color=never %s check-update"
+	cmd := "yum --color=never %s check-update"
 	if o.getServerInfo().Enablerepo != "" {
 		cmd = fmt.Sprintf(cmd, "--enablerepo="+o.getServerInfo().Enablerepo)
 	} else {
@@ -541,7 +541,7 @@ func (o *redhat) getAllChangelog(packInfoList models.PackageInfoList) (stdout st
 		yumopts += " --skip-broken"
 	}
 	// yum update --changelog doesn't have --color option.
-	command += fmt.Sprintf(" LANGUAGE=en_US.UTF-8 yum %s --changelog update ", yumopts) + packageNames
+	command += fmt.Sprintf(" yum %s --changelog update ", yumopts) + packageNames
 
 	r := o.runcmd(command, sudo)
 	if !r.isSuccess(0, 1) {
@@ -597,7 +597,7 @@ func (o *redhat) scanUnsecurePackagesUsingYumPluginSecurity() (models.VulnInfos,
 
 	// get package name, version, rel to be upgrade.
 	//  cmd = "yum check-update --security"
-	cmd = "LANGUAGE=en_US.UTF-8 yum --color=never check-update"
+	cmd = "yum --color=never check-update"
 	r = o.runcmd(util.PrependProxyEnv(cmd), o.sudo())
 	if !r.isSuccess(0, 100) {
 		//returns an exit code of 100 if there are available updates.

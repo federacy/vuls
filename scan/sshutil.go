@@ -148,15 +148,41 @@ func parallelSSHExec(fn func(osTypeInterface) error, timeoutSec ...int) (errs []
 	return
 }
 
-func sshExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
-	if conf.Conf.SSHExternal {
+func runcmd(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
+	logger := util.NewCustomLogger(c)
+
+	if (c.Port == "" || c.Port == "local") &&
+	   (c.Host == "127.0.0.1" || c.Host == "localhost") {
+		result = localExec(c, cmd, sudo, logger)
+	} else if conf.Conf.SSHExternal {
 		result = sshExecExternal(c, cmd, sudo)
 	} else {
 		result = sshExecNative(c, cmd, sudo)
 	}
 
-	logger := getSSHLogger(log...)
 	logger.Debug(result)
+	return
+}
+
+func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
+	var err error
+	// Setup Logger
+	var logger *logrus.Entry = log[0]
+	toExec := exec.Command("bash", "-c", cmd)
+	var stdoutBuf, stderrBuf bytes.Buffer
+	toExec.Stdout = &stdoutBuf
+	toExec.Stderr = &stderrBuf
+
+	if err := toExec.Run(); err != nil {
+		result.ExitStatus = 999
+	} else {
+		result.ExitStatus = 0
+	}
+	result.Stdout = stdoutBuf.String()
+	result.Stderr = stderrBuf.String()
+	logger.Debugf(
+		"Shell executed. cmd: %s, status: %#v\nstdout: \n%s\nstderr: \n%s",
+		cmd, err, result.Stdout, result.Stderr)
 	return
 }
 
@@ -421,4 +447,8 @@ func parsePemBlock(block *pem.Block) (interface{}, error) {
 	default:
 		return nil, fmt.Errorf("Unsupported key type %q", block.Type)
 	}
+}
+
+func maskPassword(cmd, sudoPass string) string {
+	return strings.Replace(cmd, fmt.Sprintf("echo %s", sudoPass), "echo *****", -1)
 }

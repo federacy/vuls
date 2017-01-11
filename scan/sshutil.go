@@ -25,7 +25,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	ex "os/exec"
+	"os/exec"
 	"strings"
 	"syscall"
 	"time"
@@ -148,7 +148,7 @@ func parallelSSHExec(fn func(osTypeInterface) error, timeoutSec ...int) (errs []
 	return
 }
 
-func exec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
+func runcmd(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
 	var logger *logrus.Entry
 	if (c.Port == "" || c.Port == "local") && 
 	   (c.Host == "127.0.0.1" || c.Host == "localhost") {

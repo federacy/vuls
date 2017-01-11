@@ -149,17 +149,17 @@ func parallelSSHExec(fn func(osTypeInterface) error, timeoutSec ...int) (errs []
 }
 
 func runcmd(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (result sshResult) {
-	var logger *logrus.Entry
-	if (c.Port == "" || c.Port == "local") && 
+	logger := util.NewCustomLogger(c)
+
+	if (c.Port == "" || c.Port == "local") &&
 	   (c.Host == "127.0.0.1" || c.Host == "localhost") {
-	   	result = localExec(c, cmd, sudo, logger)
+		result = localExec(c, cmd, sudo, logger)
 	} else if conf.Conf.SSHExternal {
 		result = sshExecExternal(c, cmd, sudo)
 	} else {
 		result = sshExecNative(c, cmd, sudo)
 	}
 
-	logger := getSSHLogger(log...)
 	logger.Debug(result)
 	return
 }
@@ -168,7 +168,7 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	var err error
 	// Setup Logger
 	var logger *logrus.Entry = log[0]
-	toExec := ex.Command("bash", "-c", cmd)
+	toExec := exec.Command("bash", "-c", cmd)
 	var stdoutBuf, stderrBuf bytes.Buffer
 	toExec.Stdout = &stdoutBuf
 	toExec.Stderr = &stderrBuf
@@ -182,8 +182,7 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	result.Stderr = stderrBuf.String()
 	logger.Debugf(
 		"Shell executed. cmd: %s, status: %#v\nstdout: \n%s\nstderr: \n%s",
-		maskPassword(cmd, c.Password), err, result.Stdout, result.Stderr)
-
+		cmd, err, result.Stdout, result.Stderr)
 	return
 }
 

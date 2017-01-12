@@ -24,7 +24,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/rifflock/lfshook"
-
 	"github.com/future-architect/vuls/config"
 	formatter "github.com/kotakanbe/logrus-prefixed-formatter"
 )
@@ -40,7 +39,7 @@ func NewCustomLogger(c config.ServerInfo) *logrus.Entry {
 	}
 
 	// File output
-	logDir := "/var/log/vuls"
+	logDir := c.Conf.LogPath
 	if runtime.GOOS == "windows" {
 		logDir = filepath.Join(os.Getenv("APPDATA"), "vuls")
 	}

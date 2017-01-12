@@ -168,6 +168,9 @@ func localExec(c conf.ServerInfo, cmd string, sudo bool, log ...*logrus.Entry) (
 	var err error
 	// Setup Logger
 	var logger *logrus.Entry = log[0]
+ 	if sudo {
+ 		cmd = "sudo " + cmd
+ 	}
 	toExec := exec.Command("bash", "-c", cmd)
 	var stdoutBuf, stderrBuf bytes.Buffer
 	toExec.Stdout = &stdoutBuf

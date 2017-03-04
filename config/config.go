@@ -38,6 +38,7 @@ type Config struct {
 
 	EMail   SMTPConf
 	Slack   SlackConf
+	Rest	RestConf
 	Default ServerInfo
 	Servers map[string]ServerInfo
 
@@ -292,6 +293,17 @@ type SlackConf struct {
 	Text        string `json:"text"`
 
 	UseThisTime bool
+}
+
+type RestConf struct {
+	Url	 string `json:"url""`
+	Token	 string `json:"token"`
+	Email	 string `json:"email"`
+	Hostid	 string `json:"hostid"`
+}
+
+func (c *RestConf) Validate() (errs []error) {
+	return
 }
 
 // Validate validates configuration

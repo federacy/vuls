@@ -55,6 +55,7 @@ type ReportCmd struct {
 	toLocalFile bool
 	toS3        bool
 	toAzureBlob bool
+	toRest      bool
 
 	formatJSON        bool
 	formatXML         bool
@@ -249,6 +250,8 @@ func (p *ReportCmd) SetFlags(f *flag.FlagSet) {
 		"pipe",
 		false,
 		"Use args passed via PIPE")
+
+	f.BoolVar(&p.toRest, "to-rest", false, "Send report via REST")
 }
 
 // Execute execute
@@ -339,6 +342,10 @@ func (p *ReportCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}
 			return subcommands.ExitUsageError
 		}
 		reports = append(reports, report.AzureBlobWriter{})
+	}
+
+	if p.toRest {
+		reports = append(reports, report.RestWriter{})
 	}
 
 	if !(p.formatJSON || p.formatOneLineText ||

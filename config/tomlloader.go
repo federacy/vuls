@@ -45,6 +45,7 @@ func (c TOMLLoader) Load(pathToToml, keyPass string) error {
 
 	Conf.EMail = conf.EMail
 	Conf.Slack = conf.Slack
+	Conf.Rest = conf.Rest
 
 	d := conf.Default
 	Conf.Default = d
